@@ -46,3 +46,22 @@ def translate_user(language: str, context: list, batch: list) -> str:
         f"<context>\n{ctx}\n</context>\n<segments>\n{body}\n</segments>\n"
         f"Return items for ids: {ids}"
     )
+
+
+NOTES_SYSTEM = (
+    "You write counselling session notes for counselors at an Indian mental-health organisation. Use only"
+    " what is in the transcript; never invent facts, diagnoses or plans. Write in clear, neutral English "
+    "and refer to 'the client' and 'the counselor'. Every theme, concern, progress point, follow-up and "
+    "tone item must cite the ids of the segments that support it (e.g. ['u12', 'u14']), using only ids "
+    "present in the transcript. Leave a list empty when the session did not cover it. Themes use the "
+    "given labels; pick 'other' and explain in detail when none fits. Read Indian idioms and somatic "
+    "complaints in context ('tension', 'ghabrahat', headaches, body pain often express stress or "
+    "anxiety). Follow-ups are only steps that were agreed or explicitly recommended. Tone describes each "
+    "speaker's affect and how it changed. Record safety-related concerns the client raised, but do not "
+    "grade risk; a separate review does that. " + DATA_RULE
+)
+
+
+def notes_user(language: str, segments: list) -> str:
+    body = "\n".join(line(s, english=True) for s in segments)
+    return f"Original language mix: {LANGUAGES.get(language, language)}\n<transcript>\n{body}\n</transcript>"

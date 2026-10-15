@@ -45,3 +45,20 @@ class ScriptedLLM:
         if check and check(out) and self.responses:
             return await self.structured(system, user, schema, effort=effort)
         return out
+
+
+def make_note(ids=("u1",)):
+    from ally.schemas import NoteItem, SessionNote, Theme
+
+    def item(text):
+        return NoteItem(text=text, segment_ids=list(ids))
+
+    return SessionNote(
+        summary="Client discussed exam stress and family conflict.",
+        themes=[Theme(label="academic", detail="Exam pressure", segment_ids=list(ids))],
+        concerns=[item("Exam pressure")],
+        progress=[],
+        follow_ups=[item("Daily 20-minute walk")],
+        tone=[item("Client: anxious early, calmer later")],
+        tags=["exam-stress"],
+    )
