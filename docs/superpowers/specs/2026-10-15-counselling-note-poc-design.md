@@ -37,12 +37,12 @@ Malayalam(-English), English.
    - Probe: container, codec, duration, channels, sample rate. Unreadable → `415` at upload time.
    - Fake-stereo check: decode the first 30 s to planar s16 and compare channel bytes; identical → treat as mono.
    - Transcode only when needed: codecs Deepgram does not accept (e.g. AMR) → FLAC; Gemini route → mono 16 kHz MP3
-     (fallback WAV) so base64 stays under the 20 MB inline request limit (larger → stage error naming the limit).
+     so base64 stays under the 20 MB inline request limit (larger → stage error naming the limit).
 2. **Speech** (`speech.py`): `SPEECH_ROUTES` maps language → provider (`hi`/`mr`/`en` → `deepgram`, `ml` → `gemini`).
    - Deepgram params: `model=nova-3`, `language` (`hi→multi`, `mr→mr`, `en→en`), `smart_format`, `punctuate`,
      `utterances=true`; true stereo → `multichannel=true` (speaker = channel); mono → `diarize_model=latest`.
      Parse `results.utterances` → segments sorted by start, ids `u1..uN`.
-   - Gemini: one structured call with the audio part; returns segments `{speaker, start "MM:SS", end, text, text_en}`.
+   - Gemini: one structured call with the audio part (calls ≤ 30 min, 600 s timeout); returns segments `{speaker, start "MM:SS", end, text, text_en}`.
    - Both return `Transcript(provider, language, segments)`.
 3. **Translate** (`translate.py`): segments with `text_en is None` and language ≠ `en` go to the LLM in batches of
    `TRANSLATE_BATCH_SIZE` (120), each with up to 3 earlier segments as read-only context, concurrency bounded by the
@@ -104,7 +104,7 @@ signed_at, signoff JSON`.
 
 | Method | Path | Behaviour |
 |---|---|---|
-| GET | `/health` | `{status, deepgram_configured, llm_configured}` |
+| GET | `/health` | `{status, speech: [configured providers], llm: bool}` |
 | POST | `/sessions` | multipart `audio`, `language` (`hi`/`mr`/`ml`/`en`, default `hi`); counselor channel comes from `COUNSELOR_CHANNEL`, roles are fixed via `PATCH /speakers`. Extension allowlist (`mp3 wav m4a aac ogg opus flac webm amr mp4`) → `415`; empty → `400`; > `MAX_UPLOAD_MB` → `413`; unreadable → `415`; provider key for route missing → `503`. Returns `202 {id, status}` |
 | GET | `/sessions` | summaries, newest first |
 | GET | `/sessions/{id}` | full session |
@@ -145,8 +145,8 @@ tasks/todo.md tasks/lessons.md
 
 ## 9. Errors & logging
 
-Stage failure → `failed` + short error. Upload/config errors as in §6. stdlib `logging`, one line per stage
-(`session_id stage seconds`); transcript text never logged. openai SDK `max_retries`/`timeout` from config; Deepgram
+Stage failure → `failed` + short error. Upload/config errors as in §6. stdlib `logging`: one line per session
+outcome (per-stage seconds live in `timings`); transcript text never logged; httpx request logging silenced. openai SDK `max_retries`/`timeout` from config; Deepgram
 `httpx` timeout 600 s.
 
 ## 10. Testing

@@ -73,8 +73,9 @@ Sample audio, macOS only: `.venv/bin/python scripts/make_fixtures.py` writes `sa
 - **Marathi** uses `language=mr`, which is monolingual. Deepgram's code-switching mode doesn't include Marathi, so Marathi-English calls lose accuracy on English words. You can route `mr` to `gemini` in `SPEECH_ROUTES`.
 - **Malayalam:** Deepgram has no Malayalam model, so `ml` goes to Gemini audio, which returns segments with English text already filled in.
   - Timestamps are only approximate (MM:SS).
-  - Audio must be under about 14 MB after transcoding to 32 kbps mono MP3, roughly 60 minutes. Larger files need the Files API, which isn't implemented.
-- **Fake stereo:** many telephony exports copy one signal to both channels. Probing compares the first 30 seconds of each channel. Identical channels are treated as mono and diarized, rather than split into two identical "speakers".
+  - It is one request per call, so calls are capped at 30 minutes, with a 600-second timeout. Longer calls fail immediately with a clear error. The upgrade is to split the audio into windows.
+  - Gemini's compatibility docs only show WAV input. MP3 input is unverified until the first live run.
+- **Fake stereo:** many telephony exports copy one signal to both channels. Probing compares the energy of the difference between channels over the first 30 seconds of non-silent audio, which tolerates AAC and Opus rounding. Matching channels are treated as mono and diarized, rather than split into two identical "speakers".
 - **No denoising:** neural speech enhancement measurably hurts recognition accuracy. Audio is only transcoded when a provider can't accept it, such as AMR to FLAC for Deepgram.
 - **Translation:**
   - Segments are batched, with three earlier segments sent as read-only context.
@@ -121,6 +122,6 @@ scripts/make_fixtures.py
 - **Processing:** a durable job queue in place of in-process background tasks, and ingestion from telephony webhooks or URLs.
 - **Language coverage:**
   - A Sarvam `saaras` adapter for Marathi-English and Indic translation with India residency.
-  - The Gemini Files API for audio over 20 MB.
+  - Chunked Gemini audio for Malayalam calls over 30 minutes.
 - **Integrations:** CRM-specific adapters.
 - **Operations:** tracing (Langfuse or OpenTelemetry), an eval harness built on the `edits` table, and real-time alerting on `risk_alert`.
