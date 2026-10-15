@@ -73,3 +73,17 @@ async def test_prefilled_segments_skipped():
     await translate(llm, s, "ml", batch_size=10)
     assert s[0].text_en == "already"
     assert "ids: u2" in llm.calls[0]["user"]
+
+
+async def test_failed_batch_keeps_original_and_warns():
+    from ally.llm import LLMError
+
+    def boom(user):
+        raise LLMError("TranslationBatch: provider HTTP 503")
+
+    s = segs(4)
+    llm = ScriptedLLM(echo, boom)
+    warnings = await translate(llm, s, "hi", batch_size=2)
+    assert [x.text_en for x in s[:2]] == ["EN u1", "EN u2"]
+    assert [x.text_en for x in s[2:]] == [x.text for x in s[2:]]
+    assert warnings == ["2 segment(s) left untranslated; original text kept"]

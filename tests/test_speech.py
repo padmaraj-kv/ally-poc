@@ -106,6 +106,7 @@ class AudioLLM:
 
     async def structured(self, system, user, schema, **kw):
         self.user = user
+        self.kw = kw
         return AudioTranscript(
             segments=[
                 AudioSegment(speaker=0, start="00:00", end="00:04", text="നമസ്കാരം", text_en="Hello"),
@@ -136,3 +137,19 @@ async def test_gemini_rejects_oversized_audio(tmp_path):
     path.write_bytes(b"0" * (15 * 1024 * 1024))
     with pytest.raises(SpeechError, match="20 MB"):
         await GeminiSpeech(AudioLLM()).transcribe(path, meta(False), "ml")
+
+
+async def test_gemini_uses_long_timeout(tmp_path):
+    path = tmp_path / "a.gemini.mp3"
+    path.write_bytes(b"ID3fake")
+    llm = AudioLLM()
+    await GeminiSpeech(llm).transcribe(path, meta(False), "ml")
+    assert llm.kw["timeout"] >= 600
+
+
+async def test_gemini_rejects_calls_over_cap(tmp_path):
+    path = tmp_path / "long.gemini.mp3"
+    path.write_bytes(b"ID3fake")
+    long_call = meta(False).model_copy(update={"duration_s": 31 * 60})
+    with pytest.raises(SpeechError, match="30 min"):
+        await GeminiSpeech(AudioLLM()).transcribe(path, long_call, "ml")

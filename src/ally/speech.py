@@ -10,6 +10,9 @@ from ally.schemas import AudioMeta, Segment, Transcript
 
 DEEPGRAM_LANG = {"hi": "multi", "mr": "mr", "en": "en"}
 INLINE_LIMIT = 14 * 1024 * 1024  # raw bytes; base64 adds a third, request cap is 20 MB
+# ponytail: one request per call; chunk the audio into windows to go past this.
+GEMINI_MAX_S = 30 * 60
+GEMINI_TIMEOUT_S = 600
 
 
 class SpeechError(RuntimeError):
@@ -99,6 +102,8 @@ class GeminiSpeech:
         self.llm = llm
 
     async def transcribe(self, path: Path, meta: AudioMeta, language: str) -> Transcript:
+        if meta.duration_s > GEMINI_MAX_S:
+            raise SpeechError("Gemini audio path handles calls up to 30 min in this POC")
         data = path.read_bytes()
         if len(data) > INLINE_LIMIT:
             raise SpeechError(
@@ -111,7 +116,9 @@ class GeminiSpeech:
                 "input_audio": {"data": base64.b64encode(data).decode(), "format": "mp3"},
             },
         ]
-        out = await self.llm.structured(prompts.AUDIO_SYSTEM, user, AudioTranscript, effort="low")
+        out = await self.llm.structured(
+            prompts.AUDIO_SYSTEM, user, AudioTranscript, effort="low", timeout=GEMINI_TIMEOUT_S
+        )
         segments = [
             Segment(
                 id=f"u{i}",

@@ -1,10 +1,14 @@
 import asyncio
+import logging
 from collections import Counter
 
 from pydantic import BaseModel
 
 from ally import prompts
+from ally.llm import LLMError
 from ally.schemas import Segment
+
+log = logging.getLogger(__name__)
 
 
 class TranslatedItem(BaseModel):
@@ -44,13 +48,17 @@ async def _batch(llm, segments: list[Segment], idx: list[int], language: str) ->
             issues.append("duplicate ids: " + ", ".join(dups))
         return issues
 
-    out = await llm.structured(
-        prompts.TRANSLATE_SYSTEM,
-        prompts.translate_user(language, context, batch),
-        TranslationBatch,
-        effort="low",
-        check=check,
-    )
+    try:
+        out = await llm.structured(
+            prompts.TRANSLATE_SYSTEM,
+            prompts.translate_user(language, context, batch),
+            TranslationBatch,
+            effort="low",
+            check=check,
+        )
+    except LLMError as e:
+        log.warning("translation batch %s..%s failed: %s", ids[0], ids[-1], e)
+        out = TranslationBatch(items=[])
     english: dict[str, str] = {}
     for item in out.items:
         if item.id in ids and item.id not in english and item.en.strip():
