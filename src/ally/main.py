@@ -27,11 +27,15 @@ def create_app(settings: Settings | None = None, speech: dict | None = None, llm
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         logging.basicConfig(level=settings.log_level, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+        logging.getLogger("httpx").setLevel(logging.WARNING)  # request lines would log webhook URLs
         (settings.data_dir / "audio").mkdir(parents=True, exist_ok=True)
         app.state.settings = settings
         app.state.store = Store(settings.data_dir / "ally.db")
         if n := app.state.store.fail_interrupted():
             logging.getLogger("ally").warning("marked %d interrupted session(s) as failed", n)
+        if not settings.keep_audio:  # nothing is in flight at startup; drop leftovers from a crash
+            for f in (settings.data_dir / "audio").iterdir():
+                f.unlink(missing_ok=True)
         app.state.http = httpx.AsyncClient()
         if llm is not None:
             app.state.llm = llm

@@ -151,3 +151,18 @@ def test_failed_webhook_502(client):
     client.post(f"/sessions/{sid}/sign-off", json={"counselor": "Asha"})
     client.app.state.http = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(500)))
     assert client.post(f"/sessions/{sid}/export/webhook").status_code == 502
+
+
+def test_startup_purges_leftover_audio(tmp_path):
+    (tmp_path / "audio").mkdir()
+    leftover = tmp_path / "audio" / "crashed.wav"
+    leftover.write_bytes(wav_bytes())
+    with TestClient(build(tmp_path)):
+        assert not leftover.exists()
+
+
+def test_httpx_request_logs_silenced(tmp_path):
+    import logging
+
+    with TestClient(build(tmp_path)):
+        assert logging.getLogger("httpx").level == logging.WARNING
