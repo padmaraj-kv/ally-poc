@@ -1,3 +1,4 @@
+from array import array
 from pathlib import Path
 
 import av
@@ -6,6 +7,8 @@ from av.error import FFmpegError
 from ally.schemas import AudioMeta
 
 DEEPGRAM_CODECS = {"mp3", "mp3float", "aac", "flac", "opus", "libopus", "vorbis"}
+SILENCE = 2 * 100**2  # per-sample energy of both channels below ~-50 dBFS
+SAME_RATIO = 1e-4  # residual energy (L-R) vs (L+R); ~1 for real two-speaker stereo
 MIME = {
     ".wav": "audio/wav",
     ".mp3": "audio/mpeg",
@@ -49,19 +52,29 @@ def probe(path: Path) -> AudioMeta:
     return AudioMeta(**info, stereo=stereo)
 
 
-# ponytail: exact match on the first 30 s; switch to correlation if near-duplicate channels show up.
-def _identical_channels(path: Path, seconds: float = 30) -> bool:
+# ponytail: residual-energy check in pure Python (~1 s on 48 kHz input); numpy if it ever shows in timings.
+def _identical_channels(path: Path, voiced_s: float = 30, max_s: float = 120) -> bool:
+    """True when both channels carry the same signal (lossy codecs leave tiny differences)."""
+    diff = total = 0.0
+    voiced = 0
     with av.open(str(path)) as container:
         stream = container.streams.audio[0]
+        rate = stream.codec_context.sample_rate
         resampler = av.AudioResampler(format="s16p", layout="stereo")
         for frame in container.decode(stream):
-            if frame.time is not None and frame.time > seconds:
+            if voiced >= voiced_s * rate or (frame.time is not None and frame.time > max_s):
                 break
             for f in resampler.resample(frame):
-                n = f.samples * 2
-                if bytes(f.planes[0])[:n] != bytes(f.planes[1])[:n]:
-                    return False
-    return True
+                left = array("h", bytes(f.planes[0])[: f.samples * 2])
+                right = array("h", bytes(f.planes[1])[: f.samples * 2])
+                energy = sum(a * a + b * b for a, b in zip(left, right, strict=True))
+                if energy < SILENCE * f.samples:
+                    continue
+                d = sum((a - b) ** 2 for a, b in zip(left, right, strict=True))
+                diff += d
+                total += 2 * energy - d  # (L+R)^2 summed, since (L-R)^2 + (L+R)^2 = 2(L^2 + R^2)
+                voiced += f.samples
+    return diff <= SAME_RATIO * total
 
 
 def prepare(path: Path, meta: AudioMeta, provider: str) -> Path:

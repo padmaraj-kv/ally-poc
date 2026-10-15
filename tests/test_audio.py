@@ -1,5 +1,8 @@
+import wave
+
 import av
 import pytest
+from conftest import wav_bytes
 
 from ally import audio
 from ally.audio import InvalidAudio, prepare, probe
@@ -64,3 +67,26 @@ def test_prepare_gemini_mp3_mono(make_wav):
 def test_mime_type(tmp_path):
     assert audio.mime_type(tmp_path / "a.M4A") == "audio/mp4"
     assert audio.mime_type(tmp_path / "a.xyz") == "application/octet-stream"
+
+
+@pytest.mark.parametrize(
+    ("name", "codec", "fmt", "rate", "bit_rate"),
+    [("a.m4a", "aac", "ipod", 16000, 128000), ("a.ogg", "libopus", "ogg", 16000, 32000)],
+)
+def test_lossy_fake_stereo_is_mono(make_wav, tmp_path, name, codec, fmt, rate, bit_rate):
+    out = tmp_path / name
+    src = make_wav(channels=2, same=True, seconds=2)
+    audio._transcode(src, out, codec, fmt, rate=rate, layout="stereo", bit_rate=bit_rate)
+    assert probe(out).stereo is False
+
+
+def test_true_stereo_after_leading_silence(tmp_path):
+    path = tmp_path / "ring.wav"
+    silence = bytes(8000 * 4 * 31)  # 31 s of digital silence on both channels
+    tones = wav_bytes(channels=2, seconds=1)[44:]
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(2)
+        w.setsampwidth(2)
+        w.setframerate(8000)
+        w.writeframes(silence + tones)
+    assert probe(path).stereo is True
