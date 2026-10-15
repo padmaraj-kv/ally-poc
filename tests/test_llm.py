@@ -113,3 +113,34 @@ async def test_http_error_is_short_llm_error():
     llm, _ = make_llm(parse=[http_error(openai.RateLimitError, 429)])
     with pytest.raises(LLMError, match="HTTP 429"):
         await llm.structured("sys", "hi", Answer)
+
+
+async def test_invalid_retry_keeps_first_valid_answer():
+    llm, _ = make_llm(parse=[parsed(Answer(value=5)), validation_error()])
+    assert (await llm.structured("sys", "hi", Answer, check=lambda a: ["missing u2"])).value == 5
+
+
+async def test_per_call_timeout_passed_through():
+    llm, comp = make_llm(parse=[parsed(Answer(value=1))])
+    await llm.structured("sys", "hi", Answer, timeout=600)
+    assert comp.calls[0][1]["timeout"] == 600
+
+
+async def test_timeout_is_reported_as_timeout():
+    llm, _ = make_llm(parse=[openai.APITimeoutError(request=httpx2.Request("POST", "http://llm"))])
+    with pytest.raises(LLMError, match="timed out"):
+        await llm.structured("sys", "hi", Answer)
+
+
+async def test_content_filter_is_llm_error():
+    llm, _ = make_llm(parse=[openai.ContentFilterFinishReasonError()])
+    with pytest.raises(LLMError, match="content filter"):
+        await llm.structured("sys", "hi", Answer)
+
+
+async def test_content_filter_finish_reason_on_fallback():
+    llm, _ = make_llm(
+        parse=[http_error(openai.BadRequestError, 400)], create=[raw("", finish="content_filter")]
+    )
+    with pytest.raises(LLMError, match="content filter"):
+        await llm.structured("sys", "hi", Answer)

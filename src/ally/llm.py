@@ -44,31 +44,33 @@ class LLM:
         *,
         effort: str | None = None,
         check: Callable[[T], list[str]] | None = None,
+        timeout: float | None = None,
     ) -> T:
         """Return a validated `schema` instance; one retry with feedback on invalid output or check issues."""
         messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
-        result = None
+        extra = {k: v for k, v in (("reasoning_effort", effort), ("timeout", timeout)) if v}
+        best = None
         for attempt in range(2):
             try:
-                result = await self._complete(messages, schema, effort)
-                issues = check(result) if check else []
+                result = await self._complete(messages, schema, extra)
             except ValidationError as e:
-                result = None
                 issues = [f"{'.'.join(map(str, err['loc']))}: {err['msg']}" for err in e.errors()[:5]]
-            if not issues:
-                return result
+            else:
+                best = result
+                issues = check(result) if check else []
+                if not issues:
+                    return result
             if attempt == 0:
                 feedback = "Your previous answer had problems:\n- " + "\n- ".join(issues[:20])
                 messages = [
                     *messages,
                     {"role": "user", "content": feedback + "\nReturn the complete corrected JSON."},
                 ]
-        if result is None:
+        if best is None:
             raise LLMError(f"{schema.__name__}: invalid output after retry")
-        return result
+        return best  # caller handles any remaining check issues
 
-    async def _complete(self, messages: list[dict], schema: type[T], effort: str | None) -> T:
-        extra = {"reasoning_effort": effort} if effort else {}
+    async def _complete(self, messages: list[dict], schema: type[T], extra: dict) -> T:
         try:
             async with self._sem:
                 if self._strict:
@@ -94,13 +96,19 @@ class LLM:
                 )
         except openai.LengthFinishReasonError as e:
             raise LLMError(f"{schema.__name__}: output truncated") from e
+        except openai.ContentFilterFinishReasonError as e:
+            raise LLMError(f"{schema.__name__}: blocked by provider content filter") from e
         except openai.APIStatusError as e:
             raise LLMError(f"{schema.__name__}: provider HTTP {e.status_code}") from e
+        except openai.APITimeoutError as e:
+            raise LLMError(f"{schema.__name__}: provider timed out") from e
         except openai.APIConnectionError as e:
             raise LLMError(f"{schema.__name__}: provider unreachable") from e
         choice = resp.choices[0]
         if choice.finish_reason == "length":
             raise LLMError(f"{schema.__name__}: output truncated")
+        if choice.finish_reason == "content_filter":
+            raise LLMError(f"{schema.__name__}: blocked by provider content filter")
         return schema.model_validate_json(_strip_fences(choice.message.content or ""))
 
 
