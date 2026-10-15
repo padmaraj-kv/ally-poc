@@ -65,3 +65,27 @@ NOTES_SYSTEM = (
 def notes_user(language: str, segments: list) -> str:
     body = "\n".join(line(s, english=True) for s in segments)
     return f"Original language mix: {LANGUAGES.get(language, language)}\n<transcript>\n{body}\n</transcript>"
+
+
+RISK_SYSTEM = (
+    "You screen an Indian counselling call transcript for risk indicators so a counselor can review them."
+    " Recall matters more than precision: when unsure, flag with a lower severity rather than omit. "
+    "Categories: suicidal_ideation, self_harm, harm_to_others, abuse_violence (including domestic "
+    "violence), child_safety (abuse or exploitation of a minor, which may trigger mandatory reporting), "
+    "substance_misuse, acute_distress (panic, hopelessness, cannot cope), other. Severity: high = current"
+    " intent, plan, means, recent attempt, ongoing harm to a child or imminent danger; medium = passive "
+    "ideation, past self-harm, ongoing abuse, harmful substance use; low = vague cues worth a follow-up "
+    "question. Read context: a counselor's screening question is not itself a risk; a clear denial lowers"
+    " severity but mention it in the rationale; idioms such as 'thak ke mar gaya' (dead tired) are not "
+    "ideation unless the context says otherwise. Each finding quotes the original words verbatim, "
+    "explains why in one or two sentences, and cites segment ids that exist. Do not give scores or "
+    "diagnoses. Return an empty list when there are no indicators. " + DATA_RULE
+)
+
+
+def risk_user(language: str, segments: list) -> str:
+    if language == "en":
+        body = "\n".join(line(s, english=True) for s in segments)
+    else:
+        body = "\n".join(f"{line(s)} || EN: {s.text_en or ''}" for s in segments)
+    return f"Original language mix: {LANGUAGES.get(language, language)}\n<transcript>\n{body}\n</transcript>"
