@@ -1,0 +1,131 @@
+import asyncio
+import logging
+import time
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Literal
+
+from pydantic import BaseModel
+
+from ally import audio, prompts
+from ally.audio import InvalidAudio
+from ally.config import Settings
+from ally.llm import LLMError
+from ally.notes import generate_note
+from ally.risk import assess_risk, has_alert
+from ally.schemas import AudioMeta, Segment
+from ally.speech import SpeechError
+from ally.translate import translate
+
+log = logging.getLogger(__name__)
+KNOWN_ERRORS = (InvalidAudio, LLMError, SpeechError)
+
+
+class PipelineError(RuntimeError):
+    pass
+
+
+class RoleGuess(BaseModel):
+    counselor_speaker: int
+    confidence: Literal["low", "medium", "high"]
+    rationale: str
+
+
+def audio_path(settings: Settings, session_id: str, filename: str) -> Path:
+    return settings.data_dir / "audio" / f"{session_id}{Path(filename).suffix.lower()}"
+
+
+async def assign_roles(llm, segments: list[Segment], counselor_channel: int) -> list[str]:
+    speakers = sorted({s.speaker for s in segments})
+    warnings = []
+    if any(s.channel is not None for s in segments):
+        counselor = counselor_channel
+    elif len(speakers) < 2:
+        return ["only one speaker detected; roles left unknown"]
+    else:
+        guess = await llm.structured(
+            prompts.ROLES_SYSTEM, prompts.roles_user(segments[:40]), RoleGuess, effort="low"
+        )
+        counselor = guess.counselor_speaker if guess.counselor_speaker in speakers else segments[0].speaker
+        if guess.confidence == "low":
+            warnings.append("counselor/client roles uncertain; check speakers")
+    for s in segments:
+        s.role = "counselor" if s.speaker == counselor else "client"
+    return warnings
+
+
+class Timer:
+    def __init__(self):
+        self.stage = "start"
+        self.timings: dict[str, float] = {}
+        self._start = time.perf_counter()
+
+    @contextmanager
+    def __call__(self, stage: str):
+        self.stage = stage
+        t = time.perf_counter()
+        yield
+        self.timings[stage] = round(time.perf_counter() - t, 2)
+
+    def finish(self) -> dict[str, float]:
+        self.timings["total"] = round(time.perf_counter() - self._start, 2)
+        return self.timings
+
+
+async def run(state, session_id: str) -> None:
+    store, settings, llm = state.store, state.settings, state.llm
+    row = store.get(session_id)
+    language = row["language"]
+    meta = AudioMeta(**row["audio_meta"])
+    src = audio_path(settings, session_id, row["filename"])
+    files, warnings, timer = {src}, [], Timer()
+    store.update(session_id, status="processing")
+    try:
+        provider = state.speech[settings.speech_routes[language]]
+        with timer("audio"):
+            prepared = await asyncio.to_thread(audio.prepare, src, meta, provider.name)
+            files.add(prepared)
+        with timer("speech"):
+            transcript = await provider.transcribe(prepared, meta, language)
+            if not transcript.segments:
+                raise PipelineError("no speech detected")
+        segments = transcript.segments
+        with timer("translate"):
+            warnings += await translate(llm, segments, language, settings.translate_batch_size)
+        with timer("roles"):
+            warnings += await assign_roles(llm, segments, settings.counselor_channel)
+        with timer("notes_risk"):
+            (note, w_note), (flags, w_risk) = await asyncio.gather(
+                generate_note(llm, segments, language), assess_risk(llm, segments, language)
+            )
+        warnings += w_note + w_risk
+        store.update(
+            session_id,
+            status="draft",
+            transcript=transcript.model_dump(),
+            draft_note=note.model_dump(),
+            note=note.model_dump(),
+            risk_flags=[f.model_dump() for f in flags],
+            risk_alert=has_alert(flags),
+            timings=timer.finish(),
+            warnings=warnings,
+        )
+        log.info("session %s draft in %.1fs", session_id, timer.timings["total"])
+    except Exception as e:
+        reason = (
+            str(e)[:200]
+            if isinstance(e, KNOWN_ERRORS + (PipelineError,))
+            else f"internal error ({type(e).__name__})"
+        )
+        log.error("session %s failed at %s: %s", session_id, timer.stage, type(e).__name__)
+        store.update(
+            session_id,
+            status="failed",
+            error=f"{timer.stage}: {reason}",
+            timings=timer.finish(),
+            warnings=warnings,
+        )
+    finally:
+        if not settings.keep_audio:
+            for f in files:
+                f.unlink(missing_ok=True)

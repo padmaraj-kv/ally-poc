@@ -62,3 +62,80 @@ def make_note(ids=("u1",)):
         tone=[item("Client: anxious early, calmer later")],
         tags=["exam-stress"],
     )
+
+
+def _seg(id, speaker, text, channel=None, text_en=None):
+    from ally.schemas import Segment
+
+    return Segment(
+        id=id,
+        speaker=speaker,
+        channel=channel,
+        start=float(id[1:]) * 5,
+        end=float(id[1:]) * 5 + 4,
+        text=text,
+        text_en=text_en,
+    )
+
+
+HINGLISH = [
+    _seg("u1", 0, "Hello, main Ally helpline se baat kar rahi hoon. Aap kaise ho?"),
+    _seg("u2", 1, "कभी कभी लगता है कि जीने का कोई मतलब नहीं है"),
+    _seg("u3", 0, "Kya aapke mann mein khud ko hurt karne ka khayal aaya hai?"),
+    _seg("u4", 1, "नहीं, बस बहुत tension है exams की"),
+]
+
+
+class FakeSpeech:
+    def __init__(self, segments=None, error=None, name="deepgram"):
+        self.segments = HINGLISH if segments is None else segments
+        self.error = error
+        self.name = name
+        self.calls = []
+
+    async def transcribe(self, path, meta, language):
+        from ally.schemas import Transcript
+
+        self.calls.append((path, language))
+        if self.error:
+            raise self.error
+        return Transcript(
+            provider=self.name, language=language, segments=[s.model_copy() for s in self.segments]
+        )
+
+
+class FakeLLM:
+    """Dispatches on schema: echo translations, speaker 0 is counselor, canned note and one high risk flag."""
+
+    def __init__(self):
+        self.calls = []
+
+    async def structured(self, system, user, schema, *, effort=None, check=None):
+        import re
+
+        from ally.pipeline import RoleGuess
+        from ally.risk import RiskFinding, RiskReport
+        from ally.schemas import SessionNote
+        from ally.translate import TranslatedItem, TranslationBatch
+
+        self.calls.append(schema.__name__)
+        if schema is TranslationBatch:
+            ids = [i.strip() for i in user.rsplit("ids: ", 1)[1].split(",")]
+            return TranslationBatch(items=[TranslatedItem(id=i, en=f"EN {i}") for i in ids])
+        if schema is RoleGuess:
+            return RoleGuess(counselor_speaker=0, confidence="high", rationale="Greets with helpline name")
+        if schema is SessionNote:
+            return make_note(re.findall(r"\[(u\d+) ", user)[:1])
+        if schema is RiskReport:
+            return RiskReport(
+                findings=[
+                    RiskFinding(
+                        category="suicidal_ideation",
+                        severity="high",
+                        quote="जीने का कोई मतलब नहीं",
+                        rationale="Passive ideation",
+                        segment_ids=["u2"],
+                    )
+                ]
+            )
+        raise AssertionError(f"unexpected schema {schema}")

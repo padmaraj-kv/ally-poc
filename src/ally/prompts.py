@@ -89,3 +89,16 @@ def risk_user(language: str, segments: list) -> str:
     else:
         body = "\n".join(f"{line(s)} || EN: {s.text_en or ''}" for s in segments)
     return f"Original language mix: {LANGUAGES.get(language, language)}\n<transcript>\n{body}\n</transcript>"
+
+
+ROLES_SYSTEM = (
+    "Identify which diarized speaker is the counselor in this Indian counselling phone call. Counselors "
+    "usually greet with an organisation name, ask open questions, reflect feelings, explain "
+    "confidentiality and suggest next steps; clients describe their own difficulties. Return the "
+    "counselor's speaker number, your confidence and a one-sentence rationale. " + DATA_RULE
+)
+
+
+def roles_user(segments: list) -> str:
+    body = "\n".join(line(s, english=True) for s in segments)
+    return f"<transcript>\n{body}\n</transcript>"
