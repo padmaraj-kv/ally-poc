@@ -63,7 +63,7 @@ Each item has a pinning test in the task that owns the code (Tasks 3, 3, 6/7, 2,
 
 **Interfaces — Produces:** `ally.config.Settings` (fields per spec §7, keys are `SecretStr`); `ally.schemas`: `Language, Role, Status, Severity, RiskCategory, ThemeLabel, AudioMeta, Segment, Transcript, NoteItem, Theme, SessionNote, RiskFlag, SessionCreated, SessionSummary, Session, NotePatch, SegmentPatch, RiskFlagPatch, RiskFlagCreate, SignOff, WebhookResult`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # path: tests/test_config.py
@@ -85,9 +85,9 @@ def test_settings_defaults():
     assert s.speech_routes["ml"] == "gemini"
 ```
 
-- [ ] **Step 2: Run** `.venv/bin/pytest tests/test_config.py -q` → FAIL (`ModuleNotFoundError: ally`).
+- [x] **Step 2: Run** `.venv/bin/pytest tests/test_config.py -q` → FAIL (`ModuleNotFoundError: ally`).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```toml
 # path: pyproject.toml
@@ -382,8 +382,8 @@ class WebhookResult(BaseModel):
     status_code: int
 ```
 
-- [ ] **Step 4: Run** `.venv/bin/pip install -q -e ".[dev]" && .venv/bin/pytest tests/test_config.py -q` → PASS.
-- [ ] **Step 5: Commit** `git add -A && git commit -m "feat: scaffold package, settings and schemas"`
+- [x] **Step 4: Run** `.venv/bin/pip install -q -e ".[dev]" && .venv/bin/pytest tests/test_config.py -q` → PASS.
+- [x] **Step 5: Commit** `git add -A && git commit -m "feat: scaffold package, settings and schemas"`
 
 ### Task 2: SQLite store
 
@@ -391,7 +391,7 @@ class WebhookResult(BaseModel):
 
 **Interfaces — Produces:** `Store(path: Path)` with `create(id, language, filename, audio_meta: dict)`, `get(id) -> dict | None`, `list_all() -> list[dict]`, `update(id, **fields)`, `add_edit(session_id, target, ref, before, after)`, `edit_count(session_id) -> int`, `fail_interrupted() -> int`. Row dicts have JSON columns decoded and `risk_alert: bool`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # path: tests/test_db.py
@@ -437,9 +437,9 @@ def test_edits_counted(tmp_path):
     assert store.edit_count("s1") == 1
 ```
 
-- [ ] **Step 2: Run** `.venv/bin/pytest tests/test_db.py -q` → FAIL (`ModuleNotFoundError: ally.db`).
+- [x] **Step 2: Run** `.venv/bin/pytest tests/test_db.py -q` → FAIL (`ModuleNotFoundError: ally.db`).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 # path: src/ally/db.py
@@ -557,8 +557,8 @@ def _decode(row: sqlite3.Row) -> dict:
     return d
 ```
 
-- [ ] **Step 4: Run** `.venv/bin/pytest tests/test_db.py -q` → PASS.
-- [ ] **Step 5: Commit** `git add -A && git commit -m "feat: sqlite session store"`
+- [x] **Step 4: Run** `.venv/bin/pytest tests/test_db.py -q` → PASS.
+- [x] **Step 5: Commit** `git add -A && git commit -m "feat: sqlite session store"`
 
 ### Task 3: Audio probe, fake-stereo check, per-provider prep
 
@@ -566,7 +566,7 @@ def _decode(row: sqlite3.Row) -> dict:
 
 **Interfaces — Consumes:** `AudioMeta`. **Produces:** `InvalidAudio(ValueError)`, `probe(path) -> AudioMeta`, `prepare(path, meta, provider: str) -> Path` (`"deepgram"`: passthrough or FLAC; `"gemini"`: mono 16 kHz MP3), `mime_type(path) -> str`, `_transcode(src, dst, codec, fmt, rate=None, layout=None, bit_rate=None)`; conftest fixture `make_wav(name="a.wav", channels=1, seconds=1.0, rate=8000, same=False) -> Path` and function `wav_bytes(...) -> bytes`.
 
-- [ ] **Step 1: Write the failing tests** (covers Review Focus 1 and 2)
+- [x] **Step 1: Write the failing tests** (covers Review Focus 1 and 2)
 
 ```python
 # path: tests/conftest.py
@@ -673,9 +673,9 @@ def test_mime_type(tmp_path):
     assert audio.mime_type(tmp_path / "a.xyz") == "application/octet-stream"
 ```
 
-- [ ] **Step 2: Run** `.venv/bin/pytest tests/test_audio.py -q` → FAIL (`ModuleNotFoundError: ally.audio`).
+- [x] **Step 2: Run** `.venv/bin/pytest tests/test_audio.py -q` → FAIL (`ModuleNotFoundError: ally.audio`).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 # path: src/ally/audio.py
@@ -782,8 +782,8 @@ def _transcode(src: Path, dst: Path, codec: str, fmt: str, rate=None, layout=Non
             out.mux(pkt)
 ```
 
-- [ ] **Step 4: Run** `.venv/bin/pytest tests/test_audio.py -q` → PASS.
-- [ ] **Step 5: Commit** `git add -A && git commit -m "feat: audio probe, fake-stereo detection and provider prep"`
+- [x] **Step 4: Run** `.venv/bin/pytest tests/test_audio.py -q` → PASS.
+- [x] **Step 5: Commit** `git add -A && git commit -m "feat: audio probe, fake-stereo detection and provider prep"`
 
 ### Task 4: LLM wrapper with structured-output fallback ladder
 
@@ -791,7 +791,7 @@ def _transcode(src: Path, dst: Path, codec: str, fmt: str, rate=None, layout=Non
 
 **Interfaces — Consumes:** `Settings`. **Produces:** `LLMError(RuntimeError)`; `LLM(client, model, concurrency=4)`, `LLM.from_settings(settings)`, `await LLM.structured(system: str, user: str | list[dict], schema: type[T], *, effort: str | None = None, check: Callable[[T], list[str]] | None = None) -> T`. Contract: at most one retry (on schema-invalid output or non-empty `check` issues); after the retry it returns the result even if `check` still reports issues (caller applies fallback); two invalid outputs, refusals, HTTP or connection errors → `LLMError` with a short message.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # path: tests/test_llm.py
@@ -910,9 +910,9 @@ async def test_http_error_is_short_llm_error():
         await llm.structured("sys", "hi", Answer)
 ```
 
-- [ ] **Step 2: Run** `.venv/bin/pytest tests/test_llm.py -q` → FAIL (`ModuleNotFoundError: ally.llm`).
+- [x] **Step 2: Run** `.venv/bin/pytest tests/test_llm.py -q` → FAIL (`ModuleNotFoundError: ally.llm`).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 # path: src/ally/llm.py
@@ -1030,8 +1030,8 @@ def _strip_fences(text: str) -> str:
     return text
 ```
 
-- [ ] **Step 4: Run** `.venv/bin/pytest tests/test_llm.py -q` → PASS.
-- [ ] **Step 5: Commit** `git add -A && git commit -m "feat: LLM wrapper with strict-to-json_object fallback and one feedback retry"`
+- [x] **Step 4: Run** `.venv/bin/pytest tests/test_llm.py -q` → PASS.
+- [x] **Step 5: Commit** `git add -A && git commit -m "feat: LLM wrapper with strict-to-json_object fallback and one feedback retry"`
 
 ### Task 5: Speech providers (Deepgram REST, Gemini audio)
 
@@ -1039,7 +1039,7 @@ def _strip_fences(text: str) -> str:
 
 **Interfaces — Consumes:** `AudioMeta, Segment, Transcript`, `audio.mime_type`, `LLM.structured`. **Produces:** `SpeechError(RuntimeError)`; `parse_deepgram(body: dict, language: str, stereo: bool) -> Transcript`; `DeepgramSpeech(api_key, base_url, model, http: httpx.AsyncClient)` and `GeminiSpeech(llm)`, both with `name: str` and `async transcribe(path: Path, meta: AudioMeta, language: str) -> Transcript`; `clock(value: str) -> float`; `AudioSegment`, `AudioTranscript` (LLM schema). Segment ids are `u1..uN` in start order; empty utterances dropped.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # path: tests/test_speech.py
@@ -1164,9 +1164,9 @@ async def test_gemini_rejects_oversized_audio(tmp_path):
         await GeminiSpeech(AudioLLM()).transcribe(path, meta(False), "ml")
 ```
 
-- [ ] **Step 2: Run** `.venv/bin/pytest tests/test_speech.py -q` → FAIL (`ModuleNotFoundError: ally.speech`).
+- [x] **Step 2: Run** `.venv/bin/pytest tests/test_speech.py -q` → FAIL (`ModuleNotFoundError: ally.speech`).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 # path: src/ally/speech.py
@@ -1312,8 +1312,8 @@ def audio_user(language: str) -> str:
     return f"Expected language mix: {LANGUAGES.get(language, language)}. Transcribe this call."
 ```
 
-- [ ] **Step 4: Run** `.venv/bin/pytest tests/test_speech.py -q` → PASS.
-- [ ] **Step 5: Commit** `git add -A && git commit -m "feat: Deepgram REST and Gemini audio speech providers"`
+- [x] **Step 4: Run** `.venv/bin/pytest tests/test_speech.py -q` → PASS.
+- [x] **Step 5: Commit** `git add -A && git commit -m "feat: Deepgram REST and Gemini audio speech providers"`
 
 ### Task 6: Prompts and batched translation
 
@@ -1321,7 +1321,7 @@ def audio_user(language: str) -> str:
 
 **Interfaces — Consumes:** `Segment`, `LLM.structured` contract. **Produces:** `prompts.line(seg, english=False) -> str`, `prompts.TRANSLATE_SYSTEM`, `prompts.translate_user(language, context, batch) -> str`; `TranslatedItem`, `TranslationBatch`; `async translate(llm, segments: list[Segment], language: str, batch_size: int) -> list[str]` (fills `text_en` in place, returns warnings); conftest `ScriptedLLM(*responses)` (response = model instance or `callable(user) -> instance`; one retry when `check` reports issues).
 
-- [ ] **Step 1: Write the failing tests** (covers Review Focus 3 for translation)
+- [x] **Step 1: Write the failing tests** (covers Review Focus 3 for translation)
 
 ```python
 # append: tests/conftest.py
@@ -1420,9 +1420,9 @@ async def test_prefilled_segments_skipped():
     assert "ids: u2" in llm.calls[0]["user"]
 ```
 
-- [ ] **Step 2: Run** `.venv/bin/pytest tests/test_translate.py -q` → FAIL (`ModuleNotFoundError: ally.translate`).
+- [x] **Step 2: Run** `.venv/bin/pytest tests/test_translate.py -q` → FAIL (`ModuleNotFoundError: ally.translate`).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 # append: src/ally/prompts.py
@@ -1519,8 +1519,8 @@ async def _batch(llm, segments: list[Segment], idx: list[int], language: str) ->
     return sum(1 for s in batch if s.id not in english)
 ```
 
-- [ ] **Step 4: Run** `.venv/bin/pytest tests/test_translate.py -q` → PASS.
-- [ ] **Step 5: Commit** `git add -A && git commit -m "feat: batched id-checked translation"`
+- [x] **Step 4: Run** `.venv/bin/pytest tests/test_translate.py -q` → PASS.
+- [x] **Step 5: Commit** `git add -A && git commit -m "feat: batched id-checked translation"`
 
 ### Task 7: Evidence-linked note generation
 
@@ -1528,7 +1528,7 @@ async def _batch(llm, segments: list[Segment], idx: list[int], language: str) ->
 
 **Interfaces — Consumes:** `SessionNote, NoteItem, Theme, Segment`, `prompts.line`, `LLM.structured`. **Produces:** `prompts.NOTES_SYSTEM`, `prompts.notes_user(language, segments)`; `note_items(note) -> list` (themes + all NoteItem lists); `async generate_note(llm, segments, language) -> tuple[SessionNote, list[str]]`; conftest `make_note(ids=("u1",)) -> SessionNote`.
 
-- [ ] **Step 1: Write the failing tests** (covers Review Focus 3 for citations)
+- [x] **Step 1: Write the failing tests** (covers Review Focus 3 for citations)
 
 ```python
 # append: tests/conftest.py
@@ -1591,9 +1591,9 @@ async def test_retry_fixes_citations():
     assert note.themes[0].segment_ids == ["u1"]
 ```
 
-- [ ] **Step 2: Run** `.venv/bin/pytest tests/test_notes.py -q` → FAIL (`ModuleNotFoundError: ally.notes`).
+- [x] **Step 2: Run** `.venv/bin/pytest tests/test_notes.py -q` → FAIL (`ModuleNotFoundError: ally.notes`).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 # append: src/ally/prompts.py
@@ -1644,8 +1644,8 @@ async def generate_note(llm, segments: list[Segment], language: str) -> tuple[Se
     return note, [f"{removed} unknown citation(s) removed from the note"] if removed else []
 ```
 
-- [ ] **Step 4: Run** `.venv/bin/pytest tests/test_notes.py -q` → PASS.
-- [ ] **Step 5: Commit** `git add -A && git commit -m "feat: evidence-linked note generation with citation checks"`
+- [x] **Step 4: Run** `.venv/bin/pytest tests/test_notes.py -q` → PASS.
+- [x] **Step 5: Commit** `git add -A && git commit -m "feat: evidence-linked note generation with citation checks"`
 
 ### Task 8: Risk pass (LLM + multilingual keyword net)
 
@@ -1653,7 +1653,7 @@ async def generate_note(llm, segments: list[Segment], language: str) -> tuple[Se
 
 **Interfaces — Consumes:** `RiskFlag, RiskCategory, Severity, Segment`, `prompts.line`, `LLM.structured`. **Produces:** `prompts.RISK_SYSTEM`, `prompts.risk_user(language, segments)`; `RiskFinding`, `RiskReport`; `KEYWORDS`; `keyword_hits(segments) -> list[tuple[str, str, Segment]]` (category, phrase, segment; one per segment+category); `async assess_risk(llm, segments, language) -> tuple[list[RiskFlag], list[str]]`; `has_alert(flags) -> bool` (any non-dismissed `high`); `new_flag_id() -> str`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # path: tests/test_risk.py
@@ -1716,9 +1716,9 @@ def test_has_alert_ignores_dismissed():
     assert not has_alert([flag])
 ```
 
-- [ ] **Step 2: Run** `.venv/bin/pytest tests/test_risk.py -q` → FAIL (`ModuleNotFoundError: ally.risk`).
+- [x] **Step 2: Run** `.venv/bin/pytest tests/test_risk.py -q` → FAIL (`ModuleNotFoundError: ally.risk`).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 # append: src/ally/prompts.py
@@ -1851,8 +1851,8 @@ async def assess_risk(llm, segments: list[Segment], language: str) -> tuple[list
     return flags, [f"{removed} unknown citation(s) removed from risk flags"] if removed else []
 ```
 
-- [ ] **Step 4: Run** `.venv/bin/pytest tests/test_risk.py -q` → PASS.
-- [ ] **Step 5: Commit** `git add -A && git commit -m "feat: recall-first risk pass with multilingual keyword net"`
+- [x] **Step 4: Run** `.venv/bin/pytest tests/test_risk.py -q` → PASS.
+- [x] **Step 5: Commit** `git add -A && git commit -m "feat: recall-first risk pass with multilingual keyword net"`
 
 ### Task 9: Pipeline orchestration, roles, timings
 
@@ -1860,7 +1860,7 @@ async def assess_risk(llm, segments: list[Segment], language: str) -> tuple[list
 
 **Interfaces — Consumes:** `audio.prepare`, providers' `transcribe`, `translate`, `generate_note`, `assess_risk`, `has_alert`, `Store`. **Produces:** `PipelineError(RuntimeError)`; `RoleGuess`; `audio_path(settings, session_id, filename) -> Path` (`data_dir/audio/<id><ext>`); `async assign_roles(llm, segments, counselor_channel) -> list[str]`; `async run(state, session_id)` where `state` has `.store .settings .speech (dict name→provider) .llm`. Conftest: `HINGLISH` segments, `FakeSpeech(segments=HINGLISH, error=None, name="deepgram")`, `FakeLLM()` (dispatches on schema; `.calls` holds schema names).
 
-- [ ] **Step 1: Write the failing tests** (covers Review Focus 3 end to end)
+- [x] **Step 1: Write the failing tests** (covers Review Focus 3 end to end)
 
 ```python
 # append: tests/conftest.py
@@ -2027,9 +2027,9 @@ async def test_gemini_route_transcodes_and_cleans_up(tmp_path):
     assert state.store.get("s1")["status"] == "draft"
 ```
 
-- [ ] **Step 2: Run** `.venv/bin/pytest tests/test_pipeline.py -q` → FAIL (`ModuleNotFoundError: ally.pipeline`).
+- [x] **Step 2: Run** `.venv/bin/pytest tests/test_pipeline.py -q` → FAIL (`ModuleNotFoundError: ally.pipeline`).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 # append: src/ally/prompts.py
@@ -2171,8 +2171,8 @@ async def run(state, session_id: str) -> None:
                 f.unlink(missing_ok=True)
 ```
 
-- [ ] **Step 4: Run** `.venv/bin/pytest tests/test_pipeline.py -q` → PASS.
-- [ ] **Step 5: Commit** `git add -A && git commit -m "feat: pipeline orchestration with roles, timings and failure capture"`
+- [x] **Step 4: Run** `.venv/bin/pytest tests/test_pipeline.py -q` → PASS.
+- [x] **Step 5: Commit** `git add -A && git commit -m "feat: pipeline orchestration with roles, timings and failure capture"`
 
 ### Task 10: Export rendering and sign-off stats
 
@@ -2180,7 +2180,7 @@ async def run(state, session_id: str) -> None:
 
 **Interfaces — Consumes:** `Session` and nested schemas. **Produces:** `to_json(session, include_transcript=False) -> dict`, `to_markdown(session, include_transcript=False) -> str`, `stamp(seconds) -> "MM:SS"`, `signoff_stats(draft: dict, final: dict, edit_count: int) -> dict` (`changed_fields`, `similarity`, `edit_count`). Dismissed flags are excluded from both exports; pending ones are shown with their status.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # path: tests/test_export.py
@@ -2246,9 +2246,9 @@ def test_signoff_stats():
     assert signoff_stats(draft, draft, 0) == {"changed_fields": [], "similarity": 1.0, "edit_count": 0}
 ```
 
-- [ ] **Step 2: Run** `.venv/bin/pytest tests/test_export.py -q` → FAIL (`ModuleNotFoundError: ally.export`).
+- [x] **Step 2: Run** `.venv/bin/pytest tests/test_export.py -q` → FAIL (`ModuleNotFoundError: ally.export`).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 # path: src/ally/export.py
@@ -2341,8 +2341,8 @@ def signoff_stats(draft: dict, final: dict, edit_count: int) -> dict:
     return {"changed_fields": changed, "similarity": round(ratio, 3), "edit_count": edit_count}
 ```
 
-- [ ] **Step 4: Run** `.venv/bin/pytest tests/test_export.py -q` → PASS.
-- [ ] **Step 5: Commit** `git add -A && git commit -m "feat: JSON/Markdown export and sign-off diff stats"`
+- [x] **Step 4: Run** `.venv/bin/pytest tests/test_export.py -q` → PASS.
+- [x] **Step 5: Commit** `git add -A && git commit -m "feat: JSON/Markdown export and sign-off diff stats"`
 
 ### Task 11: HTTP API and app factory
 
@@ -2350,7 +2350,7 @@ def signoff_stats(draft: dict, final: dict, edit_count: int) -> dict:
 
 **Interfaces — Consumes:** everything above. **Produces:** `create_app(settings=None, speech=None, llm=None) -> FastAPI`, module-level `app`; routes per spec §6 (minus per-upload `counselor_channel`, which stays a setting; counselors fix roles via `PATCH /speakers`). `app.state`: `settings, store, http, llm, speech`.
 
-- [ ] **Step 1: Write the failing test** (covers Review Focus 1, 4, 5 at the HTTP layer)
+- [x] **Step 1: Write the failing test** (covers Review Focus 1, 4, 5 at the HTTP layer)
 
 ```python
 # path: tests/test_api.py
@@ -2488,9 +2488,9 @@ def test_failed_webhook_502(client):
     assert client.post(f"/sessions/{sid}/export/webhook").status_code == 502
 ```
 
-- [ ] **Step 2: Run** `.venv/bin/pytest tests/test_api.py -q` → FAIL (`ModuleNotFoundError: ally.main`).
+- [x] **Step 2: Run** `.venv/bin/pytest tests/test_api.py -q` → FAIL (`ModuleNotFoundError: ally.main`).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 # path: src/ally/routes.py
@@ -2796,8 +2796,8 @@ def _providers(settings: Settings, http: httpx.AsyncClient, llm) -> dict:
 app = create_app()
 ```
 
-- [ ] **Step 4: Run** `.venv/bin/pytest -q` → all PASS; `.venv/bin/ruff check . && .venv/bin/ruff format --check .` clean (run `ruff format .` first if needed).
-- [ ] **Step 5: Commit** `git add -A && git commit -m "feat: sessions API with review, sign-off and export"`
+- [x] **Step 4: Run** `.venv/bin/pytest -q` → all PASS; `.venv/bin/ruff check . && .venv/bin/ruff format --check .` clean (run `ruff format .` first if needed).
+- [x] **Step 5: Commit** `git add -A && git commit -m "feat: sessions API with review, sign-off and export"`
 
 ### Task 12: Synthetic fixtures, live test, README
 
@@ -2805,7 +2805,7 @@ app = create_app()
 
 **Interfaces — Consumes:** `create_app`, `Settings`. **Produces:** `samples/session_stereo.wav`, `samples/session_mono.wav`, `samples/session_mono.m4a` (gitignored); `pytest -m live`.
 
-- [ ] **Step 1: Write the live test** (skips without keys or samples)
+- [x] **Step 1: Write the live test** (skips without keys or samples)
 
 ```python
 # path: tests/test_live.py
@@ -2847,7 +2847,7 @@ def test_live_pipeline(tmp_path, name):
     assert elapsed < 300
 ```
 
-- [ ] **Step 2: Fixture script**
+- [x] **Step 2: Fixture script**
 
 ```python
 # path: scripts/make_fixtures.py
@@ -2922,16 +2922,19 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 3: Run** `.venv/bin/python scripts/make_fixtures.py` → three files in `samples/`; `.venv/bin/python -c "from ally.audio import probe; from pathlib import Path; [print(p.name, probe(p)) for p in sorted(Path('samples').iterdir())]"` → stereo file `stereo=True`, others mono.
-- [ ] **Step 4: README** (setup, Swagger walkthrough, config, design notes, gaps; written in full during execution from spec §2, §3, §6, §7, §11) and `tasks/lessons.md` with the lesson from this session: "When the user has already shared a requirements doc, scope = that doc; don't ask them to re-pick features from it."
-- [ ] **Step 5: Verify** `.venv/bin/pytest -q` all pass, `ruff check` + `ruff format --check` clean; with keys in `.env`: `.venv/bin/pytest -m live -s` → PASS with `total` < 300 s; then `uvicorn ally.main:app --reload` and walk the Swagger flow once by hand.
-- [ ] **Step 6: Commit** `git add -A && git commit -m "feat: synthetic fixtures, live test and README"`
+- [x] **Step 3: Run** `.venv/bin/python scripts/make_fixtures.py` → three files in `samples/`; `.venv/bin/python -c "from ally.audio import probe; from pathlib import Path; [print(p.name, probe(p)) for p in sorted(Path('samples').iterdir())]"` → stereo file `stereo=True`, others mono.
+- [x] **Step 4: README** (setup, Swagger walkthrough, config, design notes, gaps; written in full during execution from spec §2, §3, §6, §7, §11) and `tasks/lessons.md` with the lesson from this session: "When the user has already shared a requirements doc, scope = that doc; don't ask them to re-pick features from it."
+- [x] **Step 5: Verify** `.venv/bin/pytest -q` all pass, `ruff check` + `ruff format --check` clean; with keys in `.env`: `.venv/bin/pytest -m live -s` → PASS with `total` < 300 s; then `uvicorn ally.main:app --reload` and walk the Swagger flow once by hand.
+- [x] **Step 6: Commit** `git add -A && git commit -m "feat: synthetic fixtures, live test and README"`
 
 ### Task 13: Review and ship
 
-- [ ] Run `superpowers:requesting-code-review` on `main..feat/poc`; fix Critical/Important findings with tests; re-run `pytest -q` and ruff.
-- [ ] Push `feat/poc` and open a PR with `gh pr create` (summary, test evidence, known gaps).
+- [x] Run `superpowers:requesting-code-review` on `main..feat/poc`; fix Critical/Important findings with tests; re-run `pytest -q` and ruff.
+- [x] Push `feat/poc` and open a PR with `gh pr create` (summary, test evidence, known gaps).
 
 ## Review
 
-(filled in after execution)
+- All 12 build tasks done TDD-style; final suite 78 passed (live tests skip without keys); ruff clean.
+- Fresh whole-branch review (Opus): "with fixes". Fixed 1 critical + 6 important (fake stereo on AAC/Opus and leading silence; keep first valid LLM answer; failed translation batch falls back; Gemini 30-min cap + 600 s timeout + timeout/content-filter errors; purge leftover audio on startup; silence httpx URL logging), each with a failing test first.
+- Deferred minors: strict-mode downgrade on any 400; PATCH vs sign-off race; Deepgram upload read on the event loop.
+- Not verified: live Deepgram/Gemini behaviour (no keys in session), the 5-minute budget on a 45-60 min call, Gemini mp3 input via the compat endpoint.
