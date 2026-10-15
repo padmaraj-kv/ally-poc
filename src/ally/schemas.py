@@ -81,7 +81,9 @@ class SessionNote(BaseModel):
     concerns: list[NoteItem] = Field(description="Client's presenting concerns")
     progress: list[NoteItem] = Field(description="Progress, insight or coping noted; empty if none")
     follow_ups: list[NoteItem] = Field(description="Agreed or recommended next steps; empty if none")
-    tone: list[NoteItem] = Field(description="Tone/affect per speaker, e.g. 'Client: anxious early, calmer later'")
+    tone: list[NoteItem] = Field(
+        description="Tone/affect per speaker, e.g. 'Client: anxious early, calmer later'"
+    )
     tags: list[str] = Field(description="3-8 short lowercase tags for CRM filtering, e.g. 'exam-stress'")
 
 
