@@ -105,7 +105,7 @@ signed_at, signoff JSON`.
 | Method | Path | Behaviour |
 |---|---|---|
 | GET | `/health` | `{status, deepgram_configured, llm_configured}` |
-| POST | `/sessions` | multipart `audio`, `language` (`hi`/`mr`/`ml`/`en`, default `hi`), `counselor_channel` (opt). Extension allowlist (`mp3 wav m4a aac ogg opus flac webm amr mp4`) → `415`; empty → `400`; > `MAX_UPLOAD_MB` → `413`; unreadable → `415`; provider key for route missing → `503`. Returns `202 {id, status}` |
+| POST | `/sessions` | multipart `audio`, `language` (`hi`/`mr`/`ml`/`en`, default `hi`); counselor channel comes from `COUNSELOR_CHANNEL`, roles are fixed via `PATCH /speakers`. Extension allowlist (`mp3 wav m4a aac ogg opus flac webm amr mp4`) → `415`; empty → `400`; > `MAX_UPLOAD_MB` → `413`; unreadable → `415`; provider key for route missing → `503`. Returns `202 {id, status}` |
 | GET | `/sessions` | summaries, newest first |
 | GET | `/sessions/{id}` | full session |
 | PATCH | `/sessions/{id}/note` | partial `SessionNote`; given fields replaced; one edit row per field |
@@ -118,7 +118,7 @@ signed_at, signoff JSON`.
 | POST | `/sessions/{id}/export/webhook` | POSTs JSON export to `EXPORT_WEBHOOK_URL` (config, not request — no SSRF); `503` if unset, `502` on failure |
 
 Unknown session → `404`. Markdown export: header (id, language, date, signed by/at), summary, themes, concerns,
-progress, follow-ups, risk flags (confirmed + counselor-added; dismissed omitted), tone, tags, optional transcript
+progress, follow-ups, risk flags (all except dismissed, each with its review status), tone, tags, optional transcript
 lines `[MM:SS] Role: text_en`.
 
 ## 7. Config (`.env`)
