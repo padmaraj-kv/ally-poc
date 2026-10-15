@@ -29,3 +29,19 @@ def make_wav(tmp_path):
         return path
 
     return make
+
+
+class ScriptedLLM:
+    """Mimics LLM.structured: replays responses, one retry when check() reports issues."""
+
+    def __init__(self, *responses):
+        self.responses = list(responses)
+        self.calls = []
+
+    async def structured(self, system, user, schema, *, effort=None, check=None):
+        self.calls.append({"system": system, "user": user, "schema": schema, "effort": effort})
+        out = self.responses.pop(0)
+        out = out(user) if callable(out) else out
+        if check and check(out) and self.responses:
+            return await self.structured(system, user, schema, effort=effort)
+        return out

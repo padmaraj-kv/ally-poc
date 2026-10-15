@@ -19,3 +19,30 @@ AUDIO_SYSTEM = (
 
 def audio_user(language: str) -> str:
     return f"Expected language mix: {LANGUAGES.get(language, language)}. Transcribe this call."
+
+
+def line(seg, english: bool = False) -> str:
+    who = seg.role if seg.role != "unknown" else f"S{seg.speaker}"
+    stamp = f"{int(seg.start // 60):02d}:{int(seg.start % 60):02d}"
+    return f"[{seg.id} {stamp} {who}] {(seg.text_en or seg.text) if english else seg.text}"
+
+
+TRANSLATE_SYSTEM = (
+    "You translate transcript segments of an Indian counselling phone call into natural, faithful "
+    "English. Keep meaning, emotion, hedges, names and numbers. English words stay as spoken. Translate "
+    "idioms by meaning (e.g. 'tension' means stress or worry, 'ghabrahat' means anxiety or panic) and "
+    "keep the original word in brackets when it carries emotional weight. Never merge, split, drop or "
+    "summarise segments: return exactly one item per requested id. Segments inside <context> are earlier "
+    "lines for reference only; do not return them. " + DATA_RULE
+)
+
+
+def translate_user(language: str, context: list, batch: list) -> str:
+    ctx = "\n".join(line(s) for s in context)
+    body = "\n".join(line(s) for s in batch)
+    ids = ", ".join(s.id for s in batch)
+    return (
+        f"Language mix: {LANGUAGES.get(language, language)}\n"
+        f"<context>\n{ctx}\n</context>\n<segments>\n{body}\n</segments>\n"
+        f"Return items for ids: {ids}"
+    )
