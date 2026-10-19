@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ally · Session notes</title>
+<style>
+  :root {
+    --bg: #f6f6f3; --panel: #fff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e2dc;
+    --accent: #2f5d50; --accent-soft: #e4eeea; --warn: #9a5b00; --warn-soft: #fbf0dd;
+    --bad: #a3271f; --bad-soft: #f8e3e1; --ok: #2f6b2f; --ok-soft: #e5f1e3;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--ink); }
+  header { padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--panel); display: flex; gap: 12px; align-items: baseline; }
+  header h1 { font-size: 17px; margin: 0; }
+  header span { color: var(--muted); }
+  main { display: grid; grid-template-columns: 300px 1fr; min-height: calc(100vh - 52px); }
+  aside { border-right: 1px solid var(--line); background: var(--panel); padding: 16px; overflow-y: auto; }
+  section.view { padding: 20px 24px 60px; overflow-y: auto; max-width: 1100px; }
+  h2 { font-size: 15px; margin: 22px 0 8px; }
+  h3 { font-size: 13px; margin: 14px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin-bottom: 14px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 3px; }
+  input, select, textarea, button { font: inherit; }
+  input[type=text], select, textarea { width: 100%; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+  textarea { resize: vertical; min-height: 34px; }
+  button { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: #fff; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.small { padding: 2px 8px; font-size: 12px; }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .grow { flex: 1; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 11px; background: var(--line); }
+  .s-draft { background: var(--accent-soft); color: var(--accent); }
+  .s-signed { background: var(--ok-soft); color: var(--ok); }
+  .s-failed { background: var(--bad-soft); color: var(--bad); }
+  .s-queued, .s-processing { background: var(--warn-soft); color: var(--warn); }
+  .sev-high { background: var(--bad-soft); color: var(--bad); }
+  .sev-medium { background: var(--warn-soft); color: var(--warn); }
+  .sev-low { background: var(--line); }
+  .alert { background: var(--bad-soft); color: var(--bad); border: 1px solid #efc4c0; border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; }
+  .note-warn { background: var(--warn-soft); color: var(--warn); border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; }
+  .msg { margin-top: 8px; font-size: 13px; }
+  .msg.err { color: var(--bad); } .msg.ok { color: var(--ok); }
+  ul.sessions { list-style: none; padding: 0; margin: 0; }
+  ul.sessions li { padding: 8px 10px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; }
+  ul.sessions li:hover { background: var(--bg); }
+  ul.sessions li.active { border-color: var(--accent); background: var(--accent-soft); }
+  ul.sessions .meta { font-size: 12px; color: var(--muted); }
+  .timings { font-size: 12px; color: var(--muted); }
+  table.transcript { width: 100%; border-collapse: collapse; }
+  table.transcript td { vertical-align: top; padding: 6px 6px; border-top: 1px solid var(--line); }
+  table.transcript td.t { white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; width: 80px; }
+  table.transcript td.who { width: 90px; }
+  table.transcript .orig { color: var(--muted); font-size: 12px; margin-bottom: 3px; }
+  tr.flash td { background: #fff6c9; transition: background .2s; }
+  .role-counselor { color: var(--accent); font-weight: 600; }
+  .role-client { color: #5b4a8a; font-weight: 600; }
+  .chip { display: inline-block; font-size: 11px; padding: 0 6px; margin: 2px 3px 0 0; border-radius: 4px; background: var(--accent-soft); color: var(--accent); cursor: pointer; border: 0; }
+  .item { display: flex; gap: 6px; align-items: flex-start; margin-bottom: 6px; }
+  .item textarea { flex: 1; }
+  .flag { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
+  .flag.dismissed { opacity: .55; }
+  .flag .quote { font-style: italic; color: var(--muted); }
+  pre.export { white-space: pre-wrap; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 10px; max-height: 420px; overflow: auto; font-size: 12px; }
+  .empty { color: var(--muted); padding: 40px 0; text-align: center; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } .grid2 { grid-template-columns: 1fr; } aside { border-right: 0; border-bottom: 1px solid var(--line); } }
+</style>
+</head>
+<body>
+<header><h1>Ally</h1><span>Counselling session notes · POC test console</span><span class="grow"></span><span id="health"></span></header>
+<main>
+  <aside>
+    <form id="upload" class="card">
+      <strong>New session</strong>
+      <label for="file">Call recording</label>
+      <input id="file" type="file" accept=".mp3,.wav,.m4a,.aac,.ogg,.opus,.flac,.webm,.amr,.mp4" required>
+      <label for="language">Language</label>
+      <select id="language">
+        <option value="hi">Hindi-English</option>
+        <option value="mr">Marathi(-English)</option>
+        <option value="ml">Malayalam(-English)</option>
+        <option value="en">English</option>
+      </select>
+      <div class="row" style="margin-top:10px"><button class="primary" type="submit">Upload</button></div>
+      <div id="upload-msg" class="msg"></div>
+    </form>
+    <div class="row"><strong class="grow">Sessions</strong><button class="small" id="refresh" type="button">Refresh</button></div>
+    <ul class="sessions" id="sessions"></ul>
+  </aside>
+  <section class="view" id="view"><div class="empty">Upload a recording or pick a session.</div></section>
+</main>
+<script>
+const LISTS = [["concerns", "Client concerns"], ["progress", "Progress"], ["follow_ups", "Follow-ups"], ["tone", "Tone"]];
+const THEMES = ["anxiety","low_mood","stress","family_conflict","relationships","academic","work_career","grief_loss","trauma","substance_use","sleep","self_esteem","health_somatic","financial","safety","other"];
+const CATEGORIES = ["suicidal_ideation","self_harm","harm_to_others","abuse_violence","child_safety","substance_misuse","acute_distress","other"];
+let current = null, pollTimer = null, draft = null;
+
+// Tiny DOM helper: text always goes in as text nodes, never HTML.
+function h(tag, attrs = {}, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (k === "class") el.className = v;
+    else if (v === true) el.setAttribute(k, "");
+    else if (v !== false && v != null) el.setAttribute(k, v);
+  }
+  for (const kid of kids.flat()) if (kid != null && kid !== false) el.append(kid instanceof Node ? kid : String(kid));
+  return el;
+}
+const $ = (id) => document.getElementById(id);
+const stamp = (s) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+const label = (s) => s.replaceAll("_", " ");
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, opts);
+  const type = res.headers.get("content-type") || "";
+  const body = type.includes("json") ? await res.json() : await res.text();
+  if (!res.ok) throw new Error(typeof body === "object" ? (typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail)) : body);
+  return body;
+}
+const send = (method, path, data) => api(path, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+
+async function loadHealth() {
+  try {
+    const hl = await api("/health");
+    $("health").textContent = `speech: ${hl.speech.join(", ") || "none"} · llm: ${hl.llm ? "on" : "off"}`;
+  } catch { $("health").textContent = "API unreachable"; }
+}
+
+async function loadSessions() {
+  const list = await api("/sessions");
+  $("sessions").replaceChildren(...list.map((s) => h("li", { class: s.id === current ? "active" : "", onclick: () => open(s.id) },
+    h("div", { class: "row" }, h("span", { class: "grow" }, s.filename), h("span", { class: `badge s-${s.status}` }, s.status)),
+    h("div", { class: "meta" }, `${s.language} · ${s.created_at.replace("T", " ").slice(0, 16)}`, s.risk_alert ? " · ⚠ risk alert" : ""))));
+}
+
+$("upload").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const msg = $("upload-msg");
+  const fd = new FormData();
+  fd.append("audio", $("file").files[0]);
+  fd.append("language", $("language").value);
+  msg.className = "msg"; msg.textContent = "Uploading…";
+  try {
+    const out = await api("/sessions", { method: "POST", body: fd });
+    msg.className = "msg ok"; msg.textContent = `Queued ${out.id}`;
+    $("file").value = "";
+    await loadSessions(); open(out.id);
+  } catch (err) { msg.className = "msg err"; msg.textContent = err.message; }
+});
+$("refresh").addEventListener("click", loadSessions);
+
+async function open(id) {
+  current = id;
+  clearTimeout(pollTimer);
+  const s = await api(`/sessions/${id}`);
+  draft = s.note ? structuredClone(s.note) : null;
+  render(s);
+  loadSessions();
+  if (s.status === "queued" || s.status === "processing") pollTimer = setTimeout(() => open(id), 2000);
+}
+
+function flashSegment(id) {
+  const row = document.querySelector(`tr[data-seg="${id}"]`);
+  if (!row) return;
+  row.scrollIntoView({ behavior: "smooth", block: "center" });
+  row.classList.add("flash");
+  setTimeout(() => row.classList.remove("flash"), 1500);
+}
+const chips = (ids) => ids.map((i) => h("button", { class: "chip", type: "button", title: "Show in transcript", onclick: () => flashSegment(i) }, i));
+
+function status(el, text, ok) { el.className = `msg ${ok ? "ok" : "err"}`; el.textContent = text; }
+
+function render(s) {
+  const view = $("view");
+  const editable = s.status === "draft";
+  const head = h("div", { class: "row" },
+    h("h2", { class: "grow", style: "margin:0" }, s.filename),
+    h("span", { class: `badge s-${s.status}` }, s.status),
+    h("span", { class: "badge" }, s.language));
+  const parts = [head];
+  if (s.audio_meta) parts.push(h("div", { class: "timings" },
+    `${s.audio_meta.duration_s}s · ${s.audio_meta.codec} · ${s.audio_meta.channels}ch${s.audio_meta.stereo ? " (speaker per channel)" : ""} · ${s.audio_meta.sample_rate} Hz`));
+  if (Object.keys(s.timings || {}).length) parts.push(h("div", { class: "timings" },
+    "Timings: " + Object.entries(s.timings).map(([k, v]) => `${k} ${v}s`).join(" · ")));
+  if (s.status === "queued" || s.status === "processing") parts.push(h("div", { class: "empty" }, "Processing… this page refreshes itself."));
+  if (s.error) parts.push(h("div", { class: "alert" }, s.error));
+  if (s.risk_alert) parts.push(h("div", { class: "alert" }, "Risk alert: at least one high-severity risk flag is not dismissed."));
+  if ((s.warnings || []).length) parts.push(h("div", { class: "note-warn" }, ...s.warnings.map((w) => h("div", {}, w))));
+  if (s.status === "signed") parts.push(h("div", { class: "note-warn", style: "background:var(--ok-soft);color:var(--ok)" },
+    `Signed by ${s.signed_by} at ${s.signed_at}. Changed fields: ${(s.signoff?.changed_fields || []).join(", ") || "none"} · similarity to draft ${s.signoff?.similarity} · ${s.signoff?.edit_count} edits`));
+  if (s.transcript) {
+    parts.push(h("div", { class: "grid2" }, renderNote(s, editable), renderRisk(s, editable)));
+    parts.push(renderTranscript(s, editable));
+  }
+  if (s.status === "draft") parts.push(renderSignOff(s));
+  if (s.status === "signed") parts.push(renderExport(s));
+  view.replaceChildren(...parts);
+}
+
+function renderTranscript(s, editable) {
+  const speakers = [...new Set(s.transcript.segments.map((x) => x.speaker))];
+  const msg = h("div", { class: "msg" });
+  const swap = async () => {
+    const roles = {};
+    for (const sp of speakers) {
+      const role = s.transcript.segments.find((x) => x.speaker === sp).role;
+      roles[sp] = role === "counselor" ? "client" : role === "client" ? "counselor" : "unknown";
+    }
+    try { await send("PATCH", `/sessions/${s.id}/speakers`, roles); open(s.id); } catch (e) { status(msg, e.message); }
+  };
+  const rows = s.transcript.segments.map((seg) => {
+    const en = h("textarea", { rows: 1, disabled: !editable }, seg.text_en || "");
+    en.value = seg.text_en || "";
+    en.addEventListener("change", async () => {
+      try { await send("PATCH", `/sessions/${s.id}/segments/${seg.id}`, { text_en: en.value }); status(msg, `Saved ${seg.id}`, true); }
+      catch (e) { status(msg, e.message); }
+    });
+    return h("tr", { "data-seg": seg.id },
+      h("td", { class: "t" }, `${seg.id} ${stamp(seg.start)}`),
+      h("td", { class: `who role-${seg.role}` }, seg.role === "unknown" ? `S${seg.speaker}` : seg.role),
+      h("td", {}, seg.text !== seg.text_en ? h("div", { class: "orig" }, seg.text) : null, en));
+  });
+  return h("div", { class: "card" },
+    h("div", { class: "row" }, h("strong", { class: "grow" }, `Transcript · ${s.transcript.provider}`),
+      editable ? h("button", { class: "small", type: "button", onclick: swap }, "Swap counselor/client") : null),
+    h("div", { class: "timings" }, "Original text above, English below (editable). Changes save when you leave the box."),
+    h("table", { class: "transcript" }, rows), msg);
+}
+
+function renderNote(s, editable) {
+  const msg = h("div", { class: "msg" });
+  const area = (value, onInput, rows = 2) => {
+    const t = h("textarea", { rows, disabled: !editable });
+    t.value = value; t.addEventListener("input", (e) => onInput(e.target.value));
+    return t;
+  };
+  const listBlock = (field, title) => h("div", {},
+    h("h3", {}, title),
+    ...draft[field].map((item, i) => h("div", { class: "item" },
+      h("div", { class: "grow" }, area(item.text, (v) => (item.text = v)), h("div", {}, chips(item.segment_ids))),
+      editable ? h("button", { class: "small", type: "button", title: "Remove", onclick: () => { draft[field].splice(i, 1); render(s); } }, "✕") : null)),
+    draft[field].length ? null : h("div", { class: "timings" }, "None recorded"),
+    editable ? h("button", { class: "small", type: "button", onclick: () => { draft[field].push({ text: "", segment_ids: [] }); render(s); } }, "+ Add") : null);
+  const themeBlock = h("div", {},
+    h("h3", {}, "Themes"),
+    ...draft.themes.map((t, i) => {
+      const sel = h("select", { disabled: !editable, onchange: (e) => (t.label = e.target.value) }, THEMES.map((x) => h("option", { value: x, selected: x === t.label }, label(x))));
+      return h("div", { class: "item" },
+        h("div", { style: "width:150px" }, sel),
+        h("div", { class: "grow" }, area(t.detail, (v) => (t.detail = v), 1), h("div", {}, chips(t.segment_ids))),
+        editable ? h("button", { class: "small", type: "button", onclick: () => { draft.themes.splice(i, 1); render(s); } }, "✕") : null);
+    }),
+    editable ? h("button", { class: "small", type: "button", onclick: () => { draft.themes.push({ label: "other", detail: "", segment_ids: [] }); render(s); } }, "+ Add") : null);
+  const tags = h("input", { type: "text", disabled: !editable, value: draft.tags.join(", ") });
+  tags.addEventListener("input", () => (draft.tags = tags.value.split(",").map((x) => x.trim()).filter(Boolean)));
+  const save = async () => {
+    const changed = {};
+    for (const k of Object.keys(draft)) if (JSON.stringify(draft[k]) !== JSON.stringify(s.note[k])) changed[k] = draft[k];
+    if (!Object.keys(changed).length) return status(msg, "No changes", true);
+    try { await send("PATCH", `/sessions/${s.id}/note`, changed); status(msg, `Saved: ${Object.keys(changed).join(", ")}`, true); open(s.id); }
+    catch (e) { status(msg, e.message); }
+  };
+  return h("div", { class: "card" },
+    h("div", { class: "row" }, h("strong", { class: "grow" }, "Session note"),
+      editable ? h("button", { class: "primary small", type: "button", onclick: save }, "Save note") : null),
+    h("h3", {}, "Summary"), area(draft.summary, (v) => (draft.summary = v), 6),
+    themeBlock, ...LISTS.map(([f, t]) => listBlock(f, t)),
+    h("h3", {}, "Tags (comma separated)"), tags, msg);
+}
+
+function renderRisk(s, editable) {
+  const msg = h("div", { class: "msg" });
+  const update = async (flag, data) => {
+    try { await send("PATCH", `/sessions/${s.id}/risk-flags/${flag.id}`, data); open(s.id); } catch (e) { status(msg, e.message); }
+  };
+  const flags = s.risk_flags.map((f) => {
+    const note = h("input", { type: "text", placeholder: "Counselor note", disabled: !editable, value: f.counselor_note || "" });
+    note.addEventListener("change", () => update(f, { counselor_note: note.value }));
+    return h("div", { class: `flag ${f.status}` },
+      h("div", { class: "row" },
+        h("strong", { class: "grow" }, label(f.category)),
+        h("span", { class: `badge sev-${f.severity}` }, f.severity),
+        h("span", { class: "badge" }, f.source),
+        h("span", { class: `badge ${f.status === "confirmed" ? "s-signed" : f.status === "dismissed" ? "" : "s-queued"}` }, f.status)),
+      f.quote ? h("div", { class: "quote" }, `“${f.quote}”`) : null,
+      h("div", {}, f.rationale),
+      h("div", {}, chips(f.segment_ids)),
+      editable ? h("div", { class: "row", style: "margin-top:6px" },
+        h("button", { class: "small", type: "button", onclick: () => update(f, { status: "confirmed" }) }, "Confirm"),
+        h("button", { class: "small", type: "button", onclick: () => update(f, { status: "dismissed" }) }, "Dismiss"),
+        h("select", { class: "grow", style: "width:auto", onchange: (e) => update(f, { severity: e.target.value }) },
+          ["low", "medium", "high"].map((v) => h("option", { value: v, selected: v === f.severity }, v)))) : null,
+      h("div", { style: "margin-top:6px" }, note));
+  });
+  let addForm = null;
+  if (editable) {
+    const cat = h("select", {}, CATEGORIES.map((c) => h("option", { value: c }, label(c))));
+    const sev = h("select", {}, ["low", "medium", "high"].map((v) => h("option", { value: v }, v)));
+    const why = h("input", { type: "text", placeholder: "Why (required)" });
+    const quote = h("input", { type: "text", placeholder: "Quote (optional)" });
+    const add = async () => {
+      try { await send("POST", `/sessions/${s.id}/risk-flags`, { category: cat.value, severity: sev.value, rationale: why.value, quote: quote.value }); open(s.id); }
+      catch (e) { status(msg, e.message); }
+    };
+    addForm = h("div", {}, h("h3", {}, "Add a missed flag"), h("div", { class: "row" }, cat, sev), why, quote,
+      h("button", { class: "small", type: "button", style: "margin-top:6px", onclick: add }, "+ Add flag"));
+  }
+  return h("div", { class: "card" }, h("strong", {}, "Risk flags"),
+    h("div", { class: "timings" }, "Screening aid for counselor review, not a risk score."),
+    flags.length ? flags : h("div", { class: "timings" }, "No risk indicators flagged."), addForm, msg);
+}
+
+function renderSignOff(s) {
+  const msg = h("div", { class: "msg" });
+  const name = h("input", { type: "text", placeholder: "Counselor name" });
+  const sign = async () => {
+    try { await send("POST", `/sessions/${s.id}/sign-off`, { counselor: name.value }); open(s.id); } catch (e) { status(msg, e.message); }
+  };
+  return h("div", { class: "card" }, h("strong", {}, "Sign off"),
+    h("div", { class: "timings" }, "Locks the session. High-severity flags must be confirmed or dismissed first. Save note edits before signing."),
+    h("div", { class: "row", style: "margin-top:8px" }, h("div", { class: "grow" }, name), h("button", { class: "primary", type: "button", onclick: sign }, "Sign off")), msg);
+}
+
+function renderExport(s) {
+  const out = h("pre", { class: "export" }, "Pick a format.");
+  const msg = h("div", { class: "msg" });
+  const withTranscript = h("input", { type: "checkbox" });
+  const show = async (fmt) => {
+    try {
+      const body = await api(`/sessions/${s.id}/export?format=${fmt}&include_transcript=${withTranscript.checked}`);
+      out.textContent = typeof body === "string" ? body : JSON.stringify(body, null, 2);
+    } catch (e) { status(msg, e.message); }
+  };
+  const hook = async () => {
+    try { const r = await api(`/sessions/${s.id}/export/webhook?include_transcript=${withTranscript.checked}`, { method: "POST" }); status(msg, `Webhook answered HTTP ${r.status_code}`, true); }
+    catch (e) { status(msg, e.message); }
+  };
+  return h("div", { class: "card" }, h("strong", {}, "Export"),
+    h("div", { class: "row", style: "margin-top:8px" },
+      h("label", { class: "row", style: "margin:0" }, withTranscript, "include transcript"),
+      h("button", { type: "button", onclick: () => show("markdown") }, "Markdown"),
+      h("button", { type: "button", onclick: () => show("json") }, "JSON"),
+      h("button", { type: "button", onclick: hook }, "Send to webhook")),
+    msg, out);
+}
+
+loadHealth();
+loadSessions();
+</script>
+</body>
+</html>

@@ -166,3 +166,10 @@ def test_httpx_request_logs_silenced(tmp_path):
 
     with TestClient(build(tmp_path)):
         assert logging.getLogger("httpx").level == logging.WARNING
+
+
+def test_ui_served_at_root(client):
+    page = client.get("/")
+    assert page.status_code == 200
+    assert page.headers["content-type"].startswith("text/html")
+    assert "Ally" in page.text

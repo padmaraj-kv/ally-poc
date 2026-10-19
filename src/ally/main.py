@@ -1,8 +1,10 @@
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import httpx
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 
 from ally.config import Settings
 from ally.db import Store
@@ -51,6 +53,10 @@ def create_app(settings: Settings | None = None, speech: dict | None = None, llm
         title="Ally counselling notes (POC)", version="0.1.0", description=DESCRIPTION, lifespan=lifespan
     )
     app.include_router(router)
+
+    @app.get("/", include_in_schema=False)
+    def ui() -> FileResponse:
+        return FileResponse(Path(__file__).parent / "static" / "index.html")
 
     @app.get("/health", tags=["meta"])
     def health() -> dict:

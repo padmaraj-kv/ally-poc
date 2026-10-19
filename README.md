@@ -31,7 +31,8 @@ python3.11 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 cp .env.example .env   # add DEEPGRAM_API_KEY and LLM_API_KEY
 .venv/bin/uvicorn ally.main:app --reload
-open http://127.0.0.1:8000/docs
+open http://127.0.0.1:8000        # test UI
+open http://127.0.0.1:8000/docs   # Swagger
 ```
 
 FFmpeg doesn't need to be installed separately: PyAV wheels bundle it. The LLM default is the Gemini free tier through its OpenAI-compatible endpoint. Free-tier prompts may be used for training, so send synthetic audio only.
