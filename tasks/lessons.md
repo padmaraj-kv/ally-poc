@@ -5,3 +5,4 @@
 - Extracting code from Markdown: match closing fences only at line start; code can contain ``` inside strings.
 - Don't assume inputs carry metadata the real source won't have (e.g. call language at upload). Ask how the data arrives in production before making it a required field.
 - Code-switched calls can change language mid-call: any detection that looks only at the opening (first N seconds) is wrong for this domain; sample the whole call.
+- Never pipe a test command through tail in an && chain before a commit: tail exits 0 and hides failures. Run tests, check the result, then commit.
