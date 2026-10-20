@@ -16,10 +16,11 @@ Design spec: [`docs/superpowers/specs/2026-10-15-counselling-note-poc-design.md`
 POST /sessions ─► probe (PyAV) ─► 202 {id}
                     │ background task
                     ▼
- audio prep ─► speech ─► translate ─► roles ─► notes ∥ risk ─► draft ─► review ─► sign-off ─► export
- (transcode    Deepgram    LLM, batched,  channel or   LLM + keyword     PATCH ...   gate: no      JSON / MD
-  only when    (hi/mr/en)  ids checked    LLM guess    net               edits only  pending high   / webhook
-  needed)      Gemini (ml)                                               in draft    flags
+ detect ─► audio prep ─► speech ─► translate ─► roles ─► notes ∥ risk ─► draft ─► review ─► sign-off ─► export
+ (clips      (transcode    Deepgram    LLM, batched,  channel or   LLM + keyword     PATCH ...   gate: no      JSON / MD
+  across      only when    (hi/en)     ids checked    LLM guess,   net               edits only  pending high   / webhook
+  the call)   needed)      Gemini                     per chunk                      in draft    flags
+                           (ml/mr/mixed)
 ```
 
 Each stage is timed into `timings`, which is how you check the 5-minute budget. Any failure sets `status=failed` and records `error="<stage>: <reason>"`.
@@ -41,7 +42,7 @@ Sample audio, macOS only: `.venv/bin/python scripts/make_fixtures.py` writes `sa
 
 ## Walkthrough in Swagger
 
-1. **`POST /sessions`:** pick a file and a `language` (`hi`, `mr`, `ml` or `en`). Returns `202 {"id": ...}`.
+1. **`POST /sessions`:** pick a file. `language` defaults to `auto`, which detects it; set `hi`, `mr`, `ml` or `en` only if you know it. Returns `202 {"id": ...}`.
 2. **`GET /sessions/{id}`:** poll until `status` is `draft`. The response holds the transcript (`text` as spoken, `text_en` in English), the `note`, the `risk_flags` and `risk_alert`, plus `timings` and `warnings`.
 3. **Review:**
    - `PATCH /sessions/{id}/note`: send any subset of note fields.
@@ -61,7 +62,8 @@ Sample audio, macOS only: `.venv/bin/python scripts/make_fixtures.py` writes `sa
 | `LLM_BASE_URL` / `LLM_MODEL` | Gemini `gemini-3.8-flash` | Any OpenAI-compatible endpoint works. Groq `openai/gpt-oss-120b` only fits calls up to about 20 min on its free tier (8K tokens per minute) |
 | `LLM_API_KEY` | | Required |
 | `LLM_CONCURRENCY` / `TRANSLATE_BATCH_SIZE` | `4` / `120` | Lower these if you hit free-tier rate limits |
-| `SPEECH_ROUTES` | `{"hi":"deepgram","mr":"deepgram","en":"deepgram","ml":"gemini"}` | Maps language to provider |
+| `SPEECH_ROUTES` | `{"hi":"deepgram","mr":"gemini","en":"deepgram","ml":"gemini"}` | Maps language to provider |
+| `MIXED_SPEECH_ROUTE` | `gemini` | Provider for auto-detected calls whose languages need different providers |
 | `COUNSELOR_CHANNEL` | `0` | Which channel is the counselor in true-stereo recordings |
 | `KEEP_AUDIO` | `false` | Audio is deleted once processing ends |
 | `MAX_UPLOAD_MB` | `200` | |
@@ -70,17 +72,20 @@ Sample audio, macOS only: `.venv/bin/python scripts/make_fixtures.py` writes `sa
 ## Design notes
 
 - **Deepgram over REST, not its SDK:** the SDK has had four major versions since May 2025. The request is Nova-3 with `diarize_model=latest`; true-stereo files use `multichannel=true` instead, so speaker = channel.
-- **Hindi-English** uses Nova-3 `language=multi`, which handles code-switching.
-- **Marathi** uses `language=mr`, which is monolingual. Deepgram's code-switching mode doesn't include Marathi, so Marathi-English calls lose accuracy on English words. You can route `mr` to `gemini` in `SPEECH_ROUTES`.
+- **Language detection (`language=auto`):** callers can switch language anywhere in the call, so detection never looks at the opening alone (Whisper's first-30-seconds detection is the known pitfall). It takes a 10-second clip every minute across the whole call, or the whole call when it is 10 minutes or shorter. Gemini lists the languages in each clip, in parallel requests of 15 clips. A 71-minute call takes about 25 s.
+- **One engine per call:** if only Hindi and English are heard, the call goes to Deepgram. Any Malayalam, Marathi or unsupported language sends the whole call to Gemini. Switching engines partway would mix two independent speaker numberings.
+- **Hindi-English** uses Nova-3 `language=multi`, which handles code-switching and tags each word's language.
+- **Marathi** defaults to Gemini: Deepgram's `mr` model is Marathi-only and mishears English words.
 - **Malayalam:** Deepgram has no Malayalam model, so `ml` goes to Gemini audio, which returns segments with English text already filled in.
   - Timestamps are only approximate (MM:SS).
-  - It is one request per call, so calls are capped at 30 minutes, with a 600-second timeout. Longer calls fail immediately with a clear error. The upgrade is to split the audio into windows.
-  - Gemini's compatibility docs only show WAV input. MP3 input is unverified until the first live run.
+  - Calls are sent in 10-minute parts, in parallel. Gemini numbers speakers afresh in each part, so roles (counselor or client) are decided per part and speakers are renumbered by role across the call.
+  - Parts are cut at fixed times, so a sentence can be split at a boundary.
 - **Fake stereo:** many telephony exports copy one signal to both channels. Probing compares the energy of the difference between channels over the first 30 seconds of non-silent audio, which tolerates AAC and Opus rounding. Matching channels are treated as mono and diarized, rather than split into two identical "speakers".
 - **No denoising:** neural speech enhancement measurably hurts recognition accuracy. Audio is only transcoded when a provider can't accept it, such as AMR to FLAC for Deepgram.
 - **Translation:**
   - Segments are batched, with three earlier segments sent as read-only context.
   - The code checks that every segment id comes back exactly once. One retry feeds back the problems, then any missing segments keep their original text and a warning is recorded.
+- **Notes read both languages:** each line gives the original words and the English translation. A study of code-mixed summarisation (CS-Sum, 2025) found translate-then-summarise doesn't help and that summaries tend to drop the non-English parts, so the prompt asks for every language to be covered.
 - **Evidence links:** every note item and risk flag cites segment ids. Unknown ids get one retry and are then stripped, with a warning. Markdown exports show the cited timestamps.
 - **Risk:**
   - A separate recall-first LLM pass reads both the original-language and English text.
@@ -123,6 +128,6 @@ scripts/make_fixtures.py
 - **Processing:** a durable job queue in place of in-process background tasks, and ingestion from telephony webhooks or URLs.
 - **Language coverage:**
   - A Sarvam `saaras` adapter for Marathi-English and Indic translation with India residency.
-  - Chunked Gemini audio for Malayalam calls over 30 minutes.
+  - Benchmark Sarvam Saaras batch: one engine for en/hi/mr/ml with code-mixing and diarization, which could replace routing.
 - **Integrations:** CRM-specific adapters.
 - **Operations:** tracing (Langfuse or OpenTelemetry), an eval harness built on the `edits` table, and real-time alerting on `risk_alert`.

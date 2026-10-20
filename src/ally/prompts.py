@@ -17,14 +17,36 @@ AUDIO_SYSTEM = (
 )
 
 
-def audio_user(language: str) -> str:
-    return f"Expected language mix: {LANGUAGES.get(language, language)}. Transcribe this call."
+def audio_user(language: str, part: int = 1, parts: int = 1, start_s: float = 0) -> str:
+    text = f"Expected language mix: {LANGUAGES.get(language, language)}. Transcribe this call."
+    if parts > 1:
+        text += (
+            f" This audio is part {part} of {parts}, starting {int(start_s // 60)} min into the call;"
+            " give times from the start of this part. It may begin or end mid-sentence."
+        )
+    return text
+
+
+LANGID_SYSTEM = (
+    "You identify spoken languages in short clips from Indian counselling phone calls. For each clip, "
+    "list every language you hear, even a few words of it: hi (Hindi), mr (Marathi), ml (Malayalam), en "
+    "(English), other (any other language), none (silence, music or no clear speech). Code-mixed speech "
+    "lists all its languages, e.g. ['hi', 'en']. Do not transcribe."
+)
+
+
+def langid_user(n: int) -> str:
+    return f"{n} clips follow, each labelled with its clip number. Return one entry per clip."
 
 
 def line(seg, english: bool = False) -> str:
     who = seg.role if seg.role != "unknown" else f"S{seg.speaker}"
     stamp = f"{int(seg.start // 60):02d}:{int(seg.start % 60):02d}"
     return f"[{seg.id} {stamp} {who}] {(seg.text_en or seg.text) if english else seg.text}"
+
+
+def bilingual(seg) -> str:
+    return f"{line(seg)} || EN: {seg.text_en or ''}"
 
 
 TRANSLATE_SYSTEM = (
@@ -56,14 +78,16 @@ NOTES_SYSTEM = (
     "present in the transcript. Leave a list empty when the session did not cover it. Themes use the "
     "given labels; pick 'other' and explain in detail when none fits. Read Indian idioms and somatic "
     "complaints in context ('tension', 'ghabrahat', headaches, body pain often express stress or "
-    "anxiety). Follow-ups are only steps that were agreed or explicitly recommended. Tone describes each "
+    "anxiety). Lines may give the original words and an English translation: cover what was said in "
+    "every language, not just the English parts, and keep who said what. Follow-ups are only steps that"
+    " were agreed or explicitly recommended. Tone describes each "
     "speaker's affect and how it changed. Record safety-related concerns the client raised, but do not "
     "grade risk; a separate review does that. " + DATA_RULE
 )
 
 
 def notes_user(language: str, segments: list) -> str:
-    body = "\n".join(line(s, english=True) for s in segments)
+    body = "\n".join(bilingual(s) if language != "en" else line(s, english=True) for s in segments)
     return f"Original language mix: {LANGUAGES.get(language, language)}\n<transcript>\n{body}\n</transcript>"
 
 
@@ -84,10 +108,7 @@ RISK_SYSTEM = (
 
 
 def risk_user(language: str, segments: list) -> str:
-    if language == "en":
-        body = "\n".join(line(s, english=True) for s in segments)
-    else:
-        body = "\n".join(f"{line(s)} || EN: {s.text_en or ''}" for s in segments)
+    body = "\n".join(bilingual(s) if language != "en" else line(s, english=True) for s in segments)
     return f"Original language mix: {LANGUAGES.get(language, language)}\n<transcript>\n{body}\n</transcript>"
 
 

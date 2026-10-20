@@ -1,3 +1,4 @@
+import io
 from array import array
 from pathlib import Path
 
@@ -90,13 +91,25 @@ def prepare(path: Path, meta: AudioMeta, provider: str) -> Path:
     return out
 
 
+def clip_mp3(path: Path, start: float, dur: float | None) -> bytes:
+    """16 kHz mono MP3 of [start, start + dur); dur None = to the end."""
+    buf = io.BytesIO()
+    _transcode(path, buf, "libmp3lame", "mp3", 16000, "mono", 32000, start=start, dur=dur)
+    return buf.getvalue()
+
+
 def mime_type(path: Path) -> str:
     return MIME.get(path.suffix.lower(), "application/octet-stream")
 
 
-def _transcode(src: Path, dst: Path, codec: str, fmt: str, rate=None, layout=None, bit_rate=None) -> None:
-    with av.open(str(src)) as inp, av.open(str(dst), "w", format=fmt) as out:
+def _transcode(
+    src: Path, dst, codec: str, fmt: str, rate=None, layout=None, bit_rate=None, start=0.0, dur=None
+) -> None:
+    target = dst if isinstance(dst, io.BytesIO) else str(dst)
+    with av.open(str(src)) as inp, av.open(target, "w", format=fmt) as out:
         ist = inp.streams.audio[0]
+        if start:
+            inp.seek(int(start * av.time_base))  # lands on or before start; earlier frames skipped below
         rate = rate or ist.codec_context.sample_rate
         layout = layout or ist.codec_context.layout.name
         ost = out.add_stream(codec, rate=rate, layout=layout)
@@ -104,6 +117,11 @@ def _transcode(src: Path, dst: Path, codec: str, fmt: str, rate=None, layout=Non
             ost.bit_rate = bit_rate
         resampler = av.AudioResampler(format=ost.codec_context.format.name, layout=layout, rate=rate)
         for frame in inp.decode(ist):
+            t = frame.time or 0.0
+            if t + frame.samples / frame.sample_rate <= start:
+                continue
+            if dur is not None and t >= start + dur:
+                break
             for f in resampler.resample(frame):
                 for pkt in ost.encode(f):
                     out.mux(pkt)

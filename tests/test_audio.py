@@ -90,3 +90,16 @@ def test_true_stereo_after_leading_silence(tmp_path):
         w.setframerate(8000)
         w.writeframes(silence + tones)
     assert probe(path).stereo is True
+
+
+def test_clip_mp3_cuts_window(make_wav, tmp_path):
+    out = tmp_path / "clip.mp3"
+    out.write_bytes(audio.clip_mp3(make_wav(seconds=5), 2, 1.5))
+    m = audio.probe(out)
+    assert m.codec.startswith("mp3") and 1.2 < m.duration_s < 1.9
+
+
+def test_clip_mp3_whole_file(make_wav, tmp_path):
+    out = tmp_path / "all.mp3"
+    out.write_bytes(audio.clip_mp3(make_wav(seconds=3), 0, None))
+    assert 2.7 < audio.probe(out).duration_s < 3.3

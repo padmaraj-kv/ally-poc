@@ -19,7 +19,9 @@ class Settings(BaseSettings):
     llm_concurrency: int = 4
     translate_batch_size: int = 120
 
-    speech_routes: dict[str, str] = {"hi": "deepgram", "mr": "deepgram", "en": "deepgram", "ml": "gemini"}
+    speech_routes: dict[str, str] = {"hi": "deepgram", "mr": "gemini", "en": "deepgram", "ml": "gemini"}
+    # auto-detected calls whose languages span providers (or include one we don't route) go here
+    mixed_speech_route: str = "gemini"
     counselor_channel: int = 0
     data_dir: Path = Path("data")
     keep_audio: bool = False

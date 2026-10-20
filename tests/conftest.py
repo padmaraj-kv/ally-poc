@@ -87,11 +87,17 @@ HINGLISH = [
 
 
 class FakeSpeech:
-    def __init__(self, segments=None, error=None, name="deepgram"):
+    def __init__(self, segments=None, error=None, name="deepgram", heard=None):
         self.segments = HINGLISH if segments is None else segments
         self.error = error
         self.name = name
+        self.heard = heard or {}
         self.calls = []
+
+    async def detect_languages(self, path, meta):
+        from collections import Counter
+
+        return Counter(self.heard)
 
     async def transcribe(self, path, meta, language):
         from ally.schemas import Transcript

@@ -1,15 +1,16 @@
 from types import SimpleNamespace
 
+import pytest
 from conftest import FakeLLM, FakeSpeech, _seg, wav_bytes
 
 from ally import audio
 from ally.config import Settings
 from ally.db import Store
-from ally.pipeline import audio_path, run
+from ally.pipeline import PipelineError, assign_roles, audio_path, choose_route, run
 from ally.speech import SpeechError
 
 
-def setup(tmp_path, speech=None, llm=None, language="hi", channels=1, **kw):
+def setup(tmp_path, speech=None, llm=None, language="hi", channels=1, extra=(), **kw):
     settings = Settings(_env_file=None, data_dir=tmp_path, **kw)
     store = Store(tmp_path / "ally.db")
     path = audio_path(settings, "s1", "call.wav")
@@ -18,7 +19,7 @@ def setup(tmp_path, speech=None, llm=None, language="hi", channels=1, **kw):
     store.create("s1", language, "call.wav", audio.probe(path).model_dump())
     speech = speech or FakeSpeech()
     state = SimpleNamespace(
-        store=store, settings=settings, speech={speech.name: speech}, llm=llm or FakeLLM()
+        store=store, settings=settings, speech={p.name: p for p in (speech, *extra)}, llm=llm or FakeLLM()
     )
     return state, path
 
@@ -96,3 +97,53 @@ async def test_gemini_route_transcodes_and_cleans_up(tmp_path):
     assert not sent.exists() and not path.exists()
     assert "TranslationBatch" not in llm.calls
     assert state.store.get("s1")["status"] == "draft"
+
+
+ROUTES = {"hi": "deepgram", "mr": "gemini", "en": "deepgram", "ml": "gemini"}
+
+
+def test_choose_route():
+    assert choose_route({"hi": 50, "en": 20}, ROUTES, "gemini") == ("hi", "deepgram", [])
+    assert choose_route({"en": 55, "ml": 5}, ROUTES, "gemini") == ("ml", "gemini", [])
+    assert choose_route({"en": 60}, ROUTES, "gemini") == ("en", "deepgram", [])
+    assert choose_route({"hi": 40, "ml": 3}, ROUTES, "gemini")[:2] == ("hi", "gemini")
+    lang, route, warnings = choose_route({"en": 10, "other": 2}, ROUTES, "gemini")
+    assert (lang, route) == ("en", "gemini") and "unsupported" in warnings[0]
+
+
+def test_choose_route_no_speech():
+    with pytest.raises(PipelineError, match="no speech"):
+        choose_route({"none": 4}, ROUTES, "gemini")
+
+
+async def test_auto_language_detects_then_routes(tmp_path):
+    segs = [_seg("u1", 0, "Hello", text_en="Hello"), _seg("u2", 1, "വിഷമം", text_en="Sad")]
+    gemini = FakeSpeech(segs, name="gemini", heard={"en": 50, "ml": 4})
+    state, _ = setup(tmp_path, language="auto", extra=[gemini], speech_routes=ROUTES)
+    await run(state, "s1")
+    row = state.store.get("s1")
+    assert row["status"] == "draft", row["error"]
+    assert row["language"] == "ml"
+    assert row["transcript"]["languages"] == ["en", "ml"]
+    assert gemini.calls and not state.speech["deepgram"].calls
+    assert "detect" in row["timings"]
+
+
+async def test_roles_per_chunk_renumber_speakers():
+    segs = [_seg("u1", 0, "Hi"), _seg("u2", 1, "Hello"), _seg("u3", 1, "Ok"), _seg("u4", 0, "Hmm")]
+    segs[2].chunk = segs[3].chunk = 1
+
+    class PerChunk:
+        async def structured(self, system, user, schema, **kw):
+            from ally.pipeline import RoleGuess
+
+            counselor = 0 if "[u1 " in user else 1  # chunk 1 numbers the counselor as speaker 1
+            return RoleGuess(counselor_speaker=counselor, confidence="high", rationale="")
+
+    assert await assign_roles(PerChunk(), segs, 0) == []
+    assert [(s.role, s.speaker) for s in segs] == [
+        ("counselor", 0),
+        ("client", 1),
+        ("counselor", 0),
+        ("client", 1),
+    ]

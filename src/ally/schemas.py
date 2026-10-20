@@ -2,7 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-Language = Literal["hi", "mr", "ml", "en"]
+# "auto" until detection picks the main language
+Language = Literal["auto", "hi", "mr", "ml", "en"]
 Role = Literal["counselor", "client", "unknown"]
 Status = Literal["queued", "processing", "draft", "signed", "failed"]
 Severity = Literal["low", "medium", "high"]
@@ -55,11 +56,14 @@ class Segment(BaseModel):
     end: float
     text: str
     text_en: str | None = None
+    # Gemini numbers speakers per 10-min chunk; roles are matched per chunk, then renumbered
+    chunk: int = Field(0, exclude=True)
 
 
 class Transcript(BaseModel):
     provider: str
     language: Language
+    languages: list[str] = Field([], description="Languages heard by auto-detection")
     segments: list[Segment]
 
 

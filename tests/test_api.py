@@ -173,3 +173,17 @@ def test_ui_served_at_root(client):
     assert page.status_code == 200
     assert page.headers["content-type"].startswith("text/html")
     assert "Ally" in page.text
+
+
+def test_upload_without_language_autodetects(tmp_path):
+    speech = {"deepgram": FakeSpeech(), "gemini": FakeSpeech(name="gemini", heard={"hi": 3, "en": 1})}
+    with TestClient(build(tmp_path, speech=speech)) as c:
+        sid = c.post("/sessions", files={"audio": ("call.wav", wav_bytes(), "audio/wav")}).json()["id"]
+        s = c.get(f"/sessions/{sid}").json()
+    assert (s["status"], s["language"], s["transcript"]["provider"]) == ("draft", "hi", "deepgram")
+
+
+def test_autodetect_needs_gemini(tmp_path):
+    with TestClient(build(tmp_path, speech={"deepgram": FakeSpeech()})) as c:
+        r = c.post("/sessions", files={"audio": ("call.wav", wav_bytes(), "audio/wav")})
+    assert r.status_code == 503 and "auto" in r.json()["detail"]

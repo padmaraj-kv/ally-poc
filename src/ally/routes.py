@@ -66,9 +66,10 @@ async def create_session(
     language: Annotated[
         Language,
         Form(
-            description="hi = Hindi-English, mr = Marathi(-English), ml = Malayalam(-English), en = English"
+            description="auto = detect from clips across the whole call (default). Or set it if known: "
+            "hi = Hindi-English, mr = Marathi(-English), ml = Malayalam(-English), en = English"
         ),
-    ] = "hi",
+    ] = "auto",
 ):
     state = request.app.state
     settings = state.settings
@@ -79,8 +80,10 @@ async def create_session(
         )
     if state.llm is None:
         raise HTTPException(503, "LLM_API_KEY not configured")
-    provider = settings.speech_routes.get(language)
-    if provider not in state.speech:
+    if language == "auto":
+        if "gemini" not in state.speech:
+            raise HTTPException(503, "language 'auto' needs the gemini speech provider (set LLM_API_KEY)")
+    elif (provider := settings.speech_routes.get(language)) not in state.speech:
         raise HTTPException(503, f"speech provider '{provider}' for language '{language}' not configured")
 
     session_id = uuid.uuid4().hex[:12]

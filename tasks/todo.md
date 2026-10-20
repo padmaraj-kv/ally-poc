@@ -2938,3 +2938,15 @@ if __name__ == "__main__":
 - Fresh whole-branch review (Opus): "with fixes". Fixed 1 critical + 6 important (fake stereo on AAC/Opus and leading silence; keep first valid LLM answer; failed translation batch falls back; Gemini 30-min cap + 600 s timeout + timeout/content-filter errors; purge leftover audio on startup; silence httpx URL logging), each with a failing test first.
 - Deferred minors: strict-mode downgrade on any 400; PATCH vs sign-off race; Deepgram upload read on the event loop.
 - Not verified: live Deepgram/Gemini behaviour (no keys in session), the 5-minute budget on a 45-60 min call, Gemini mp3 input via the compat endpoint.
+
+## Language auto-detect + chunked Gemini (2026-10-20)
+
+Language is unknown at upload and can switch mid-call (e.g. English start, Malayalam later).
+
+- [ ] `language` optional on upload, default `auto`; explicit value still skips detection
+- [ ] Detect: 10 s clip every 60 s across the whole call (whole call if <= 10 min), Gemini labels each clip separately; any confident ml/mr clip counts
+- [ ] Route: one engine per call. Only hi/en -> Deepgram `multi`; any ml/mr/other or mixed routes -> Gemini (`MIXED_SPEECH_ROUTE`); default `mr` -> gemini
+- [ ] Gemini: 10-min chunks in parallel, times offset per chunk (removes 30-min cap)
+- [ ] Roles per chunk, then renumber speakers by role (counselor 0, client 1) so ids hold across chunks
+- [ ] Notes read original text + English, and must cover every language and keep attribution (CS-Sum findings)
+- [ ] UI + Swagger default `auto`; README + design doc in plain language

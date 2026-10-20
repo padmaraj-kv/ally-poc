@@ -35,23 +35,49 @@ def audio_path(settings: Settings, session_id: str, filename: str) -> Path:
     return settings.data_dir / "audio" / f"{session_id}{Path(filename).suffix.lower()}"
 
 
-async def assign_roles(llm, segments: list[Segment], counselor_channel: int) -> list[str]:
-    speakers = sorted({s.speaker for s in segments})
+def choose_route(heard: dict[str, int], routes: dict[str, str], mixed: str) -> tuple[str, str, list[str]]:
+    """Clip counts per language -> (main language, one speech provider for the whole call, warnings)."""
+    langs = [lang for lang in heard if lang in routes]
+    if not langs and "other" not in heard:
+        raise PipelineError("no speech detected")
+    indic = [lang for lang in langs if lang != "en"]
+    language = max(indic, key=lambda lang: heard[lang]) if indic else "en"
     warnings = []
+    if "other" in heard:
+        warnings.append("unsupported language heard in some clips; transcript may miss those parts")
+    # one engine per call keeps speaker numbering consistent; the mixed route handles every language
+    providers = {routes[lang] for lang in langs}
+    route = providers.pop() if len(providers) == 1 and "other" not in heard else mixed
+    return language, route, warnings
+
+
+async def assign_roles(llm, segments: list[Segment], counselor_channel: int) -> list[str]:
     if any(s.channel is not None for s in segments):
-        counselor = counselor_channel
-    elif len(speakers) < 2:
-        return ["only one speaker detected; roles left unknown"]
-    else:
-        guess = await llm.structured(
-            prompts.ROLES_SYSTEM, prompts.roles_user(segments[:40]), RoleGuess, effort="low"
-        )
-        counselor = guess.counselor_speaker if guess.counselor_speaker in speakers else segments[0].speaker
-        if guess.confidence == "low":
-            warnings.append("counselor/client roles uncertain; check speakers")
+        for s in segments:
+            s.role = "counselor" if s.speaker == counselor_channel else "client"
+        return []
+    chunks = sorted({s.chunk for s in segments})
+    groups = [[s for s in segments if s.chunk == c] for c in chunks]
+    results = await asyncio.gather(*(_label_roles(llm, g, len(groups) > 1) for g in groups))
+    if len(groups) > 1:
+        # speaker numbers restart in every chunk; the role is what carries across
+        for s in segments:
+            s.speaker = {"counselor": 0, "client": 1}.get(s.role, 10 * (s.chunk + 1) + s.speaker)
+    return list(dict.fromkeys(w for r in results for w in r))
+
+
+async def _label_roles(llm, segments: list[Segment], chunked: bool) -> list[str]:
+    where = f" in minutes {int(segments[0].start // 60)}-{int(segments[-1].end // 60)}" if chunked else ""
+    speakers = sorted({s.speaker for s in segments})
+    if len(speakers) < 2:
+        return [f"only one speaker detected{where}; roles left unknown"]
+    guess = await llm.structured(
+        prompts.ROLES_SYSTEM, prompts.roles_user(segments[:40]), RoleGuess, effort="low"
+    )
+    counselor = guess.counselor_speaker if guess.counselor_speaker in speakers else segments[0].speaker
     for s in segments:
         s.role = "counselor" if s.speaker == counselor else "client"
-    return warnings
+    return [f"counselor/client roles uncertain{where}; check speakers"] if guess.confidence == "low" else []
 
 
 class Timer:
@@ -81,7 +107,18 @@ async def run(state, session_id: str) -> None:
     files, warnings, timer = {src}, [], Timer()
     store.update(session_id, status="processing")
     try:
-        provider = state.speech[settings.speech_routes[language]]
+        heard = {}
+        if language == "auto":
+            with timer("detect"):
+                heard = await state.speech["gemini"].detect_languages(src, meta)
+            language, route, w = choose_route(heard, settings.speech_routes, settings.mixed_speech_route)
+            warnings += w
+            store.update(session_id, language=language)
+        else:
+            route = settings.speech_routes[language]
+        if route not in state.speech:
+            raise PipelineError(f"speech provider '{route}' not configured")
+        provider = state.speech[route]
         with timer("audio"):
             prepared = await asyncio.to_thread(audio.prepare, src, meta, provider.name)
             files.add(prepared)
@@ -89,6 +126,7 @@ async def run(state, session_id: str) -> None:
             transcript = await provider.transcribe(prepared, meta, language)
             if not transcript.segments:
                 raise PipelineError("no speech detected")
+            transcript.languages = sorted(lang for lang in heard if lang != "none")
         segments = transcript.segments
         with timer("translate"):
             warnings += await translate(llm, segments, language, settings.translate_batch_size)

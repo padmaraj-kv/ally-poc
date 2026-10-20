@@ -11,14 +11,14 @@ SEGS = [
 ]
 
 
-async def test_note_uses_english_transcript_and_medium_effort():
+async def test_note_reads_original_and_english_with_medium_effort():
     llm = ScriptedLLM(make_note(["u2"]))
     note, warnings = await generate_note(llm, SEGS, "hi")
     assert warnings == []
     assert note.concerns[0].segment_ids == ["u2"]
     call = llm.calls[0]
     assert call["effort"] == "medium"
-    assert "[u2 01:05 client] Lots of stress" in call["user"]
+    assert "[u2 01:05 client] बहुत tension है || EN: Lots of stress" in call["user"]
     assert "Hindi-English" in call["user"]
 
 

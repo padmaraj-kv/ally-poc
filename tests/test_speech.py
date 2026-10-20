@@ -7,8 +7,10 @@ from ally.schemas import AudioMeta
 from ally.speech import (
     AudioSegment,
     AudioTranscript,
+    ClipLanguage,
     DeepgramSpeech,
     GeminiSpeech,
+    LanguageScan,
     SpeechError,
     clock,
     parse_deepgram,
@@ -147,9 +149,47 @@ async def test_gemini_uses_long_timeout(tmp_path):
     assert llm.kw["timeout"] >= 600
 
 
-async def test_gemini_rejects_calls_over_cap(tmp_path):
+async def test_gemini_chunks_long_calls_and_offsets_times(tmp_path, monkeypatch):
+    cuts = []
+    monkeypatch.setattr("ally.audio.clip_mp3", lambda path, start, dur: cuts.append((start, dur)) or b"ID3")
     path = tmp_path / "long.gemini.mp3"
     path.write_bytes(b"ID3fake")
-    long_call = meta(False).model_copy(update={"duration_s": 31 * 60})
-    with pytest.raises(SpeechError, match="30 min"):
-        await GeminiSpeech(AudioLLM()).transcribe(path, long_call, "ml")
+    llm = AudioLLM()
+    long_call = meta(False).model_copy(update={"duration_s": 25 * 60})
+    t = await GeminiSpeech(llm).transcribe(path, long_call, "ml")
+    assert cuts == [(0, 600), (600, 600), (1200, 600)]
+    assert [s.id for s in t.segments] == ["u1", "u2", "u3", "u4", "u5", "u6"]
+    assert [s.start for s in t.segments] == [0, 5, 600, 605, 1200, 1205]
+    assert [s.chunk for s in t.segments] == [0, 0, 1, 1, 2, 2]
+    assert "part 3 of 3" in llm.user[0]["text"]
+
+
+class ScanLLM:
+    def __init__(self, scan):
+        self.scan, self.users = scan, []
+
+    async def structured(self, system, user, schema, **kw):
+        self.users.append(user)
+        return self.scan
+
+
+async def test_detect_languages_samples_whole_call_and_counts_clips(monkeypatch):
+    cuts = []
+    monkeypatch.setattr("ally.audio.clip_mp3", lambda path, start, dur: cuts.append((start, dur)) or b"ID3")
+    scan = LanguageScan(
+        clips=[ClipLanguage(clip=1, languages=["en"]), ClipLanguage(clip=2, languages=["en", "ml"])]
+    )
+    llm = ScanLLM(scan)
+    hour = meta(False).model_copy(update={"duration_s": 3600})
+    heard = await GeminiSpeech(llm).detect_languages("a.wav", hour)
+    assert len(cuts) == 60 and cuts[-1] == (3540, 10)
+    assert [sum(p["type"] == "input_audio" for p in u) for u in llm.users] == [15, 15, 15, 15]
+    assert heard == {"en": 8, "ml": 4}  # the same 2-clip scan is replayed for each of the 4 requests
+
+
+async def test_detect_languages_sends_short_call_whole(monkeypatch):
+    cuts = []
+    monkeypatch.setattr("ally.audio.clip_mp3", lambda path, start, dur: cuts.append((start, dur)) or b"ID3")
+    llm = ScanLLM(LanguageScan(clips=[ClipLanguage(clip=1, languages=["hi", "en"])]))
+    await GeminiSpeech(llm).detect_languages("a.wav", meta(False).model_copy(update={"duration_s": 300}))
+    assert cuts == [(0, None)]
