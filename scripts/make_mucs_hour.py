@@ -9,6 +9,8 @@ Usage: .venv/bin/python scripts/make_mucs_hour.py [--minutes 60] [--files 1]
 
 import argparse
 import json
+import shutil
+import ssl
 import tarfile
 import urllib.request
 import wave
@@ -16,6 +18,7 @@ from collections import defaultdict
 from pathlib import Path
 
 import av
+import certifi
 
 URL = "https://openslr.elda.org/resources/104/Hindi-English_test.tar.gz"
 OUT = Path(__file__).resolve().parent.parent / "samples" / "mucs"
@@ -28,7 +31,10 @@ def fetch(out: Path) -> Path:
     if not archive.exists():
         print(f"downloading {URL} (~444 MB)")
         tmp = archive.with_suffix(".part")
-        urllib.request.urlretrieve(URL, tmp)
+        # python.org builds ship without system CAs; certifi comes with httpx
+        ctx = ssl.create_default_context(cafile=certifi.where())
+        with urllib.request.urlopen(URL, context=ctx) as resp, tmp.open("wb") as f:
+            shutil.copyfileobj(resp, f)
         tmp.rename(archive)
     raw = out / "raw"
     if not raw.exists():
