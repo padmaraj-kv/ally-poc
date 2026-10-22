@@ -80,11 +80,8 @@ async def create_session(
         )
     if state.llm is None:
         raise HTTPException(503, "LLM_API_KEY not configured")
-    if language == "auto":
-        if "gemini" not in state.speech:
-            raise HTTPException(503, "language 'auto' needs the gemini speech provider (set LLM_API_KEY)")
-    elif (provider := settings.speech_routes.get(language)) not in state.speech:
-        raise HTTPException(503, f"speech provider '{provider}' for language '{language}' not configured")
+    if language == "auto" and "gemini" not in state.speech:
+        raise HTTPException(503, "language 'auto' needs the gemini speech provider (set LLM_API_KEY)")
 
     session_id = uuid.uuid4().hex[:12]
     path = pipeline.audio_path(settings, session_id, audio.filename)
@@ -107,6 +104,9 @@ async def create_session(
     except HTTPException:
         path.unlink(missing_ok=True)
         raise
+    if (provider := pipeline.pick_provider(settings, meta.duration_s)) not in state.speech:
+        path.unlink(missing_ok=True)
+        raise HTTPException(503, f"speech provider '{provider}' not configured")
     state.store.create(session_id, language, Path(audio.filename).name, meta.model_dump())
     background.add_task(pipeline.run, state, session_id)
     return SessionCreated(id=session_id, status="queued")

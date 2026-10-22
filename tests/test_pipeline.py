@@ -6,11 +6,12 @@ from conftest import FakeLLM, FakeSpeech, _seg, wav_bytes
 from ally import audio
 from ally.config import Settings
 from ally.db import Store
-from ally.pipeline import PipelineError, assign_roles, audio_path, choose_route, run
+from ally.pipeline import PipelineError, assign_roles, audio_path, main_language, pick_provider, run
 from ally.speech import SpeechError
 
 
 def setup(tmp_path, speech=None, llm=None, language="hi", channels=1, extra=(), **kw):
+    kw.setdefault("speech_provider", (speech or FakeSpeech()).name)
     settings = Settings(_env_file=None, data_dir=tmp_path, **kw)
     store = Store(tmp_path / "ally.db")
     path = audio_path(settings, "s1", "call.wav")
@@ -99,34 +100,45 @@ async def test_gemini_route_transcodes_and_cleans_up(tmp_path):
     assert state.store.get("s1")["status"] == "draft"
 
 
-ROUTES = {"hi": "deepgram", "mr": "gemini", "en": "deepgram", "ml": "gemini"}
+def test_main_language():
+    assert main_language({"hi": 50, "en": 20}) == ("hi", [])
+    assert main_language({"en": 55, "ml": 5}) == ("ml", [])
+    assert main_language({"en": 60}) == ("en", [])
+    lang, warnings = main_language({"en": 10, "other": 2})
+    assert lang == "en" and "other language" in warnings[0]
 
 
-def test_choose_route():
-    assert choose_route({"hi": 50, "en": 20}, ROUTES, "gemini") == ("hi", "deepgram", [])
-    assert choose_route({"en": 55, "ml": 5}, ROUTES, "gemini") == ("ml", "gemini", [])
-    assert choose_route({"en": 60}, ROUTES, "gemini") == ("en", "deepgram", [])
-    assert choose_route({"hi": 40, "ml": 3}, ROUTES, "gemini")[:2] == ("hi", "gemini")
-    lang, route, warnings = choose_route({"en": 10, "other": 2}, ROUTES, "gemini")
-    assert (lang, route) == ("en", "gemini") and "unsupported" in warnings[0]
-
-
-def test_choose_route_no_speech():
+def test_main_language_no_speech():
     with pytest.raises(PipelineError, match="no speech"):
-        choose_route({"none": 4}, ROUTES, "gemini")
+        main_language({"none": 4})
 
 
-async def test_auto_language_detects_then_routes(tmp_path):
-    segs = [_seg("u1", 0, "Hello", text_en="Hello"), _seg("u2", 1, "വിഷമം", text_en="Sad")]
-    gemini = FakeSpeech(segs, name="gemini", heard={"en": 50, "ml": 4})
-    state, _ = setup(tmp_path, language="auto", extra=[gemini], speech_routes=ROUTES)
+def test_pick_provider_sends_long_calls_to_gemini():
+    settings = Settings(_env_file=None)
+    assert pick_provider(settings, 600) == "sarvam"
+    assert pick_provider(settings, 601) == "gemini"
+
+
+async def test_auto_language_labels_and_short_call_uses_default_provider(tmp_path):
+    sarvam = FakeSpeech(name="sarvam")
+    gemini = FakeSpeech(name="gemini", heard={"en": 50, "ml": 4})
+    state, _ = setup(tmp_path, speech=sarvam, language="auto", extra=[gemini])
     await run(state, "s1")
     row = state.store.get("s1")
     assert row["status"] == "draft", row["error"]
     assert row["language"] == "ml"
     assert row["transcript"]["languages"] == ["en", "ml"]
-    assert gemini.calls and not state.speech["deepgram"].calls
+    assert sarvam.calls and not gemini.calls
     assert "detect" in row["timings"]
+
+
+async def test_long_call_goes_to_gemini(tmp_path):
+    segs = [_seg("u1", 0, "Hello", text_en="Hello"), _seg("u2", 1, "വിഷമം", text_en="Sad")]
+    sarvam, gemini = FakeSpeech(name="sarvam"), FakeSpeech(segs, name="gemini")
+    state, _ = setup(tmp_path, speech=sarvam, language="ml", extra=[gemini], long_call_minutes=0)
+    await run(state, "s1")
+    assert gemini.calls and not sarvam.calls
+    assert state.store.get("s1")["status"] == "draft"
 
 
 async def test_roles_per_chunk_renumber_speakers():

@@ -14,7 +14,6 @@ from ally.audio import mime_type
 from ally.schemas import AudioMeta, Segment, Transcript
 
 DEEPGRAM_LANG = {"hi": "multi", "mr": "mr", "en": "en"}
-SARVAM_LANG = {"hi": "hi-IN", "mr": "mr-IN", "ml": "ml-IN", "en": "en-IN"}
 SARVAM_MAX_WAIT_S = 30 * 60
 INLINE_LIMIT = 14 * 1024 * 1024  # raw bytes; base64 adds a third, request cap is 20 MB
 # ponytail: fixed 10-min cuts can split a sentence; snap to the nearest pause if boundary words go missing.
@@ -216,7 +215,8 @@ class SarvamSpeech:
             "model": self.model,
             # English words stay in Latin script (like Deepgram multi); translation is our own LLM step
             "mode": "codemix",
-            "language_code": SARVAM_LANG.get(language, "unknown"),
+            # auto-detect: on 22 Oct it followed an English -> Malayalam switch mid-file without a hint
+            "language_code": "unknown",
             "with_timestamps": True,
             "with_diarization": True,
         }

@@ -268,7 +268,8 @@ async def test_sarvam_batch_flow(tmp_path):
         )
     assert [s.text for s in t.segments] == ["Hello, Ally helpline", "എനിക്ക് tension ആണ്"]
     create = json.loads(calls[0][2].content)["job_parameters"]
-    assert create["mode"] == "codemix" and create["language_code"] == "ml-IN"
+    # always auto: a 22 Oct test showed Sarvam follows an en -> ml switch mid-file on its own
+    assert create["mode"] == "codemix" and create["language_code"] == "unknown"
     assert create["with_diarization"] is True and create["model"] == "saaras:v4"
     assert calls[0][2].headers["api-subscription-key"] == "k"
     put = next(r for m, p, r in calls if m == "PUT")

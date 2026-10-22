@@ -15,6 +15,7 @@ def build(tmp_path, **kw):
         _env_file=None,
         data_dir=tmp_path,
         max_upload_mb=1,
+        speech_provider="deepgram",
         export_webhook_url=kw.pop("webhook", "https://crm.example/hook"),
     )
     speech = kw.pop("speech", {"deepgram": FakeSpeech(), "gemini": FakeSpeech(name="gemini")})

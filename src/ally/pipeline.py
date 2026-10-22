@@ -35,20 +35,22 @@ def audio_path(settings: Settings, session_id: str, filename: str) -> Path:
     return settings.data_dir / "audio" / f"{session_id}{Path(filename).suffix.lower()}"
 
 
-def choose_route(heard: dict[str, int], routes: dict[str, str], mixed: str) -> tuple[str, str, list[str]]:
-    """Clip counts per language -> (main language, one speech provider for the whole call, warnings)."""
-    langs = [lang for lang in heard if lang in routes]
-    if not langs and "other" not in heard:
+def main_language(heard: dict[str, int]) -> tuple[str, list[str]]:
+    """Clip counts per language -> the call's label: the most-heard Indian language, else English."""
+    if not any(lang != "none" for lang in heard):
         raise PipelineError("no speech detected")
-    indic = [lang for lang in langs if lang != "en"]
+    indic = [lang for lang in heard if lang in ("hi", "mr", "ml")]
     language = max(indic, key=lambda lang: heard[lang]) if indic else "en"
-    warnings = []
-    if "other" in heard:
-        warnings.append("unsupported language heard in some clips; transcript may miss those parts")
-    # one engine per call keeps speaker numbering consistent; the mixed route handles every language
-    providers = {routes[lang] for lang in langs}
-    route = providers.pop() if len(providers) == 1 and "other" not in heard else mixed
-    return language, route, warnings
+    warnings = ["other language heard in some clips; check the transcript"] if "other" in heard else []
+    return language, warnings
+
+
+def pick_provider(settings: Settings, duration_s: float) -> str:
+    return (
+        settings.long_call_speech
+        if duration_s > settings.long_call_minutes * 60
+        else settings.speech_provider
+    )
 
 
 async def assign_roles(llm, segments: list[Segment], counselor_channel: int) -> list[str]:
@@ -109,13 +111,13 @@ async def run(state, session_id: str) -> None:
     try:
         heard = {}
         if language == "auto":
+            # labels the call for the prompts and the record; the engine is chosen by length, not language
             with timer("detect"):
                 heard = await state.speech["gemini"].detect_languages(src, meta)
-            language, route, w = choose_route(heard, settings.speech_routes, settings.mixed_speech_route)
+            language, w = main_language(heard)
             warnings += w
             store.update(session_id, language=language)
-        else:
-            route = settings.speech_routes[language]
+        route = pick_provider(settings, meta.duration_s)
         if route not in state.speech:
             raise PipelineError(f"speech provider '{route}' not configured")
         provider = state.speech[route]
