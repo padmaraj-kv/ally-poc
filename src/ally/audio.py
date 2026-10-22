@@ -80,8 +80,8 @@ def _identical_channels(path: Path, voiced_s: float = 30, max_s: float = 120) ->
 
 def prepare(path: Path, meta: AudioMeta, provider: str) -> Path:
     """Return a file the provider accepts, transcoding only when needed."""
-    if provider == "gemini":
-        out = path.with_suffix(".gemini.mp3")
+    if provider in ("gemini", "sarvam"):
+        out = path.with_suffix(f".{provider}.mp3")
         _transcode(path, out, "libmp3lame", "mp3", rate=16000, layout="mono", bit_rate=32000)
         return out
     if meta.codec in DEEPGRAM_CODECS or meta.codec.startswith("pcm_"):

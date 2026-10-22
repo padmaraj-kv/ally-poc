@@ -11,9 +11,11 @@ from ally.speech import (
     DeepgramSpeech,
     GeminiSpeech,
     LanguageScan,
+    SarvamSpeech,
     SpeechError,
     clock,
     parse_deepgram,
+    parse_sarvam,
 )
 
 MONO = {
@@ -193,3 +195,92 @@ async def test_detect_languages_sends_short_call_whole(monkeypatch):
     llm = ScanLLM(LanguageScan(clips=[ClipLanguage(clip=1, languages=["hi", "en"])]))
     await GeminiSpeech(llm).detect_languages("a.wav", meta(False).model_copy(update={"duration_s": 300}))
     assert cuts == [(0, None)]
+
+
+SARVAM_RESULT = {
+    "transcript": "unused",
+    "language_code": "ml-IN",
+    "diarized_transcript": {
+        "entries": [
+            {
+                "transcript": "Hello, Ally helpline",
+                "start_time_seconds": 0.4,
+                "end_time_seconds": 2.1,
+                "speaker_id": "0",
+            },
+            {"transcript": "  ", "start_time_seconds": 2.2, "end_time_seconds": 2.3, "speaker_id": "1"},
+            {
+                "transcript": "എനിക്ക് tension ആണ്",
+                "start_time_seconds": 2.5,
+                "end_time_seconds": 4.0,
+                "speaker_id": "1",
+            },
+        ]
+    },
+}
+
+
+def test_parse_sarvam_diarized_entries():
+    t = parse_sarvam(SARVAM_RESULT, "ml")
+    assert [(s.id, s.speaker, s.start, s.text) for s in t.segments] == [
+        ("u1", 0, 0.4, "Hello, Ally helpline"),
+        ("u2", 1, 2.5, "എനിക്ക് tension ആണ്"),
+    ]
+    assert t.provider == "sarvam" and t.segments[0].text_en is None
+
+
+def sarvam_transport(calls, state="Completed"):
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append((request.method, request.url.path, request))
+        path = request.url.path
+        if path == "/speech-to-text/job/v1":
+            return httpx.Response(200, json={"job_id": "j1", "job_state": "Accepted"})
+        if path.endswith("/upload-files"):
+            return httpx.Response(
+                200, json={"upload_urls": {"call.sarvam.mp3": {"file_url": "https://blob.test/in"}}}
+            )
+        if path == "/in":
+            return httpx.Response(201)
+        if path.endswith("/start"):
+            return httpx.Response(200, json={"job_state": "Pending"})
+        if path.endswith("/status"):
+            return httpx.Response(
+                200, json={"job_state": state, "job_details": [{"outputs": [{"file_name": "0.json"}]}]}
+            )
+        if path.endswith("/download-files"):
+            return httpx.Response(
+                200, json={"download_urls": {"0.json": {"file_url": "https://blob.test/out"}}}
+            )
+        if path == "/out":
+            return httpx.Response(200, json=SARVAM_RESULT)
+        return httpx.Response(404)
+
+    return httpx.MockTransport(handler)
+
+
+async def test_sarvam_batch_flow(tmp_path):
+    path = tmp_path / "call.sarvam.mp3"
+    path.write_bytes(b"ID3fake")
+    calls = []
+    async with httpx.AsyncClient(transport=sarvam_transport(calls)) as http:
+        t = await SarvamSpeech("k", "https://api.test", "saaras:v4", http, poll_s=0).transcribe(
+            path, meta(False), "ml"
+        )
+    assert [s.text for s in t.segments] == ["Hello, Ally helpline", "എനിക്ക് tension ആണ്"]
+    create = json.loads(calls[0][2].content)["job_parameters"]
+    assert create["mode"] == "codemix" and create["language_code"] == "ml-IN"
+    assert create["with_diarization"] is True and create["model"] == "saaras:v4"
+    assert calls[0][2].headers["api-subscription-key"] == "k"
+    put = next(r for m, p, r in calls if m == "PUT")
+    assert put.headers["x-ms-blob-type"] == "BlockBlob" and "api-subscription-key" not in put.headers
+    assert put.content == b"ID3fake"
+
+
+async def test_sarvam_failed_job(tmp_path):
+    path = tmp_path / "call.sarvam.mp3"
+    path.write_bytes(b"ID3fake")
+    async with httpx.AsyncClient(transport=sarvam_transport([], state="Failed")) as http:
+        with pytest.raises(SpeechError, match="sarvam job failed"):
+            await SarvamSpeech("k", "https://api.test", "saaras:v4", http, poll_s=0).transcribe(
+                path, meta(False), "ml"
+            )

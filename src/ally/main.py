@@ -10,7 +10,7 @@ from ally.config import Settings
 from ally.db import Store
 from ally.llm import LLM
 from ally.routes import router
-from ally.speech import DeepgramSpeech, GeminiSpeech
+from ally.speech import DeepgramSpeech, GeminiSpeech, SarvamSpeech
 
 DESCRIPTION = """
 Turns a recorded counselling call into an English transcript, evidence-linked notes and risk flags.
@@ -69,6 +69,8 @@ def _providers(settings: Settings, http: httpx.AsyncClient, llm) -> dict:
     providers = {}
     if key := settings.deepgram_api_key.get_secret_value():
         providers["deepgram"] = DeepgramSpeech(key, settings.deepgram_base_url, settings.deepgram_model, http)
+    if key := settings.sarvam_api_key.get_secret_value():
+        providers["sarvam"] = SarvamSpeech(key, settings.sarvam_base_url, settings.sarvam_model, http)
     if llm is not None:
         providers["gemini"] = GeminiSpeech(llm)  # needs an audio-capable model (Gemini)
     return providers

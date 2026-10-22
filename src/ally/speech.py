@@ -1,5 +1,7 @@
 import asyncio
 import base64
+import re
+import time
 from collections import Counter
 from pathlib import Path
 from typing import Literal
@@ -12,6 +14,8 @@ from ally.audio import mime_type
 from ally.schemas import AudioMeta, Segment, Transcript
 
 DEEPGRAM_LANG = {"hi": "multi", "mr": "mr", "en": "en"}
+SARVAM_LANG = {"hi": "hi-IN", "mr": "mr-IN", "ml": "ml-IN", "en": "en-IN"}
+SARVAM_MAX_WAIT_S = 30 * 60
 INLINE_LIMIT = 14 * 1024 * 1024  # raw bytes; base64 adds a third, request cap is 20 MB
 # ponytail: fixed 10-min cuts can split a sentence; snap to the nearest pause if boundary words go missing.
 CHUNK_S = 10 * 60
@@ -173,3 +177,80 @@ class GeminiSpeech:
             for s in out.segments
             if s.text.strip()
         ]
+
+
+def parse_sarvam(body: dict, language: str) -> Transcript:
+    segments = []
+    for e in (body.get("diarized_transcript") or {}).get("entries") or []:
+        text = e["transcript"].strip()
+        if not text:
+            continue
+        speaker = re.sub(r"\D", "", str(e.get("speaker_id", "")))
+        segments.append(
+            Segment(
+                id=f"u{len(segments) + 1}",
+                speaker=int(speaker or 0),
+                start=round(e["start_time_seconds"], 2),
+                end=round(e["end_time_seconds"], 2),
+                text=text,
+            )
+        )
+    return Transcript(provider="sarvam", language=language, segments=segments)
+
+
+class SarvamSpeech:
+    """Batch STT: create job, upload to a presigned URL, start, poll, download the result JSON."""
+
+    name = "sarvam"
+
+    def __init__(self, api_key: str, base_url: str, model: str, http: httpx.AsyncClient, poll_s: float = 5):
+        self.api_key, self.base_url, self.model = api_key, base_url.rstrip("/"), model
+        self.http, self.poll_s = http, poll_s
+
+    async def transcribe(self, path: Path, meta: AudioMeta, language: str) -> Transcript:
+        return parse_sarvam(await self.result(path, language), language)
+
+    async def result(self, path: Path, language: str) -> dict:
+        jobs = "/speech-to-text/job/v1"
+        params = {
+            "model": self.model,
+            # English words stay in Latin script (like Deepgram multi); translation is our own LLM step
+            "mode": "codemix",
+            "language_code": SARVAM_LANG.get(language, "unknown"),
+            "with_timestamps": True,
+            "with_diarization": True,
+        }
+        job_id = (await self._call("POST", jobs, {"job_parameters": params}))["job_id"]
+        urls = await self._call("POST", f"{jobs}/upload-files", {"job_id": job_id, "files": [path.name]})
+        await self._call(
+            "PUT",
+            urls["upload_urls"][path.name]["file_url"],
+            content=path.read_bytes(),
+            headers={"x-ms-blob-type": "BlockBlob", "Content-Type": mime_type(path)},
+        )
+        await self._call("POST", f"{jobs}/{job_id}/start")
+        deadline = time.monotonic() + SARVAM_MAX_WAIT_S
+        while (status := await self._call("GET", f"{jobs}/{job_id}/status"))["job_state"] != "Completed":
+            if status["job_state"] == "Failed":
+                raise SpeechError("sarvam job failed")
+            if time.monotonic() > deadline:
+                raise SpeechError("sarvam job timed out")
+            await asyncio.sleep(self.poll_s)
+        names = [o["file_name"] for d in status.get("job_details", []) for o in d.get("outputs", [])]
+        if not names:
+            raise SpeechError("sarvam job returned no output")
+        links = await self._call("POST", f"{jobs}/download-files", {"job_id": job_id, "files": names[:1]})
+        return await self._call("GET", links["download_urls"][names[0]]["file_url"])
+
+    async def _call(self, method: str, url: str, json: dict | None = None, **kw):
+        """API paths get the key; presigned blob URLs (absolute) must not."""
+        if url.startswith("/"):
+            url = self.base_url + url
+            kw["headers"] = {"api-subscription-key": self.api_key}
+        try:
+            resp = await self.http.request(method, url, json=json, timeout=300, **kw)
+        except httpx.HTTPError as e:
+            raise SpeechError(f"sarvam unreachable ({type(e).__name__})") from e
+        if resp.status_code >= 400:
+            raise SpeechError(f"sarvam HTTP {resp.status_code}")
+        return resp.json() if resp.content else None

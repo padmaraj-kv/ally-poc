@@ -103,3 +103,9 @@ def test_clip_mp3_whole_file(make_wav, tmp_path):
     out = tmp_path / "all.mp3"
     out.write_bytes(audio.clip_mp3(make_wav(seconds=3), 0, None))
     assert 2.7 < audio.probe(out).duration_s < 3.3
+
+
+def test_prepare_sarvam_mp3(make_wav):
+    path = make_wav(seconds=2)
+    out = prepare(path, probe(path), "sarvam")
+    assert out.name.endswith(".sarvam.mp3") and probe(out).codec.startswith("mp3")

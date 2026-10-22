@@ -59,6 +59,7 @@ Sample audio, macOS only: `.venv/bin/python scripts/make_fixtures.py` writes `sa
 |---|---|---|
 | `DEEPGRAM_API_KEY` | | Required for `hi`, `mr` and `en` |
 | `DEEPGRAM_BASE_URL` | `https://api.in.deepgram.com` | India endpoint (Hyderabad) |
+| `SARVAM_API_KEY` / `SARVAM_MODEL` | / `saaras:v4` | Enables the `sarvam` provider; route languages to it in `SPEECH_ROUTES` |
 | `LLM_BASE_URL` / `LLM_MODEL` | Gemini `gemini-3.8-flash` | Any OpenAI-compatible endpoint works. Groq `openai/gpt-oss-120b` only fits calls up to about 20 min on its free tier (8K tokens per minute) |
 | `LLM_API_KEY` | | Required |
 | `LLM_CONCURRENCY` / `TRANSLATE_BATCH_SIZE` | `4` / `120` | Lower these if you hit free-tier rate limits |
@@ -74,6 +75,7 @@ Sample audio, macOS only: `.venv/bin/python scripts/make_fixtures.py` writes `sa
 - **Deepgram over REST, not its SDK:** the SDK has had four major versions since May 2025. The request is Nova-3 with `diarize_model=latest`; true-stereo files use `multichannel=true` instead, so speaker = channel.
 - **Language detection (`language=auto`):** callers can switch language anywhere in the call, so detection never looks at the opening alone (Whisper's first-30-seconds detection is the known pitfall). It takes a 10-second clip every minute across the whole call, or the whole call when it is 10 minutes or shorter. Gemini lists the languages in each clip, in parallel requests of 15 clips. A 71-minute call takes about 25 s.
 - **One engine per call:** if only Hindi and English are heard, the call goes to Deepgram. Any Malayalam, Marathi or unsupported language sends the whole call to Gemini. Switching engines partway would mix two independent speaker numberings.
+- **Sarvam (optional):** batch STT in `codemix` mode with diarization, for any of the 23 Indian languages. It costs about ₹0.75 per audio minute, and the free tier's ₹100 covers about 130 minutes. Flow: create job → upload to a presigned URL → start → poll every 5 s → download the result JSON. Translation stays on our LLM step, which avoids paying Sarvam's translate rate. On the 1-minute sample it separated the two voices that Deepgram's mono diarization had merged (speech 8.4 s vs 0.7 s).
 - **Hindi-English** uses Nova-3 `language=multi`, which handles code-switching and tags each word's language.
 - **Marathi** defaults to Gemini: Deepgram's `mr` model is Marathi-only and mishears English words.
 - **Malayalam:** Deepgram has no Malayalam model, so `ml` goes to Gemini audio, which returns segments with English text already filled in.
@@ -128,6 +130,6 @@ scripts/make_fixtures.py
 - **Processing:** a durable job queue in place of in-process background tasks, and ingestion from telephony webhooks or URLs.
 - **Language coverage:**
   - A Sarvam `saaras` adapter for Marathi-English and Indic translation with India residency.
-  - Benchmark Sarvam Saaras batch: one engine for en/hi/mr/ml with code-mixing and diarization, which could replace routing.
+  - Benchmark Sarvam on long, real Malayalam and Marathi calls; if it holds up, route every language to it and drop language routing.
 - **Integrations:** CRM-specific adapters.
 - **Operations:** tracing (Langfuse or OpenTelemetry), an eval harness built on the `edits` table, and real-time alerting on `risk_alert`.

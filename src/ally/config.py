@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     deepgram_base_url: str = "https://api.in.deepgram.com"
     deepgram_model: str = "nova-3"
 
+    sarvam_api_key: SecretStr = SecretStr("")
+    sarvam_base_url: str = "https://api.sarvam.ai"
+    sarvam_model: str = "saaras:v4"
+
     llm_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
     llm_api_key: SecretStr = SecretStr("")
     llm_model: str = "gemini-3.8-flash"
