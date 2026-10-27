@@ -189,7 +189,13 @@ function render(s) {
     "Timings: " + Object.entries(s.timings).map(([k, v]) => `${k} ${v}s`).join(" · ")));
   if (s.status === "queued" || s.status === "processing") parts.push(h("div", { class: "empty" }, "Processing… this page refreshes itself."));
   if (s.error) parts.push(h("div", { class: "alert" }, s.error));
-  if (s.risk_alert) parts.push(h("div", { class: "alert" }, "Risk alert: at least one high-severity risk flag is not dismissed."));
+  if (s.risk_alert) {
+    // the alert stays after sign-off on purpose: confirmed high risk belongs on the record for follow-up
+    const unreviewed = (s.risk_flags || []).some((f) => f.severity === "high" && f.status === "pending");
+    parts.push(h("div", { class: "alert" }, unreviewed
+      ? "Risk alert: review the high-severity flags before signing off."
+      : "Confirmed high risk: follow-up needed."));
+  }
   if ((s.warnings || []).length) parts.push(h("div", { class: "note-warn" }, ...s.warnings.map((w) => h("div", {}, w))));
   if (s.status === "signed") parts.push(h("div", { class: "note-warn", style: "background:var(--ok-soft);color:var(--ok)" },
     `Signed by ${s.signed_by} at ${s.signed_at}. Changed fields: ${(s.signoff?.changed_fields || []).join(", ") || "none"} · similarity to draft ${s.signoff?.similarity} · ${s.signoff?.edit_count} edits`));
