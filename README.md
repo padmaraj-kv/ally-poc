@@ -82,6 +82,7 @@ Sample audio, macOS only: `.venv/bin/python scripts/make_fixtures.py` writes `sa
   - Timestamps are only approximate (MM:SS).
   - Calls are sent in 10-minute parts, in parallel. Gemini numbers speakers afresh in each part, so roles (counselor or client) are decided per part and speakers are renumbered by role across the call.
   - Parts are cut at fixed times, so a sentence can be split at a boundary.
+- **Roles (mono calls):** the LLM labels every speaker number counselor or client, from the opening 40 lines plus each speaker's first 8. One person can get several numbers: Sarvam renumbered both voices after a language switch on the 27 Oct demo call (6 numbers for 2 people).
 - **Fake stereo:** many telephony exports copy one signal to both channels. Probing compares the energy of the difference between channels over the first 30 seconds of non-silent audio, which tolerates AAC and Opus rounding. Matching channels are treated as mono and diarized, rather than split into two identical "speakers".
 - **No denoising:** neural speech enhancement measurably hurts recognition accuracy. Audio is only transcoded when a provider can't accept it, such as AMR to FLAC for Deepgram.
 - **Translation:**
@@ -91,7 +92,8 @@ Sample audio, macOS only: `.venv/bin/python scripts/make_fixtures.py` writes `sa
 - **Evidence links:** every note item and risk flag cites segment ids. Unknown ids get one retry and are then stripped, with a warning. Markdown exports show the cited timestamps.
 - **Risk:**
   - A separate recall-first LLM pass reads both the original-language and English text.
-  - A small multilingual keyword net (English, romanised Hindi, Devanagari, Marathi, Malayalam) covers lines the model didn't flag.
+  - Suicidal thoughts in the past month plus access to means are high, even if the client says they are safe now.
+  - A small multilingual keyword net (English, romanised Hindi, Devanagari, Marathi, Malayalam) covers client lines the model didn't flag; counselor lines are skipped because screening questions use the same words.
   - No scores. Severity is low, medium or high. A non-dismissed high flag sets `risk_alert`.
   - The keyword list is a starting point and needs clinician review.
 - **Structured output:** `chat.completions.parse` in strict mode. If the provider rejects the schema, it falls back to `json_object` plus Pydantic validation, then one retry that feeds the validation errors back.
