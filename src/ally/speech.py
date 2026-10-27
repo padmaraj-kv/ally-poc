@@ -230,7 +230,7 @@ class SarvamSpeech:
             "with_timestamps": True,
             "with_diarization": True,
         }
-        if self.num_speakers:
+        if self.num_speakers > 0:
             params["num_speakers"] = self.num_speakers
         if self.keyterms:
             params["keyterms"] = self.keyterms

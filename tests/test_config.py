@@ -24,3 +24,8 @@ def test_sarvam_speaker_count_and_keyterms(monkeypatch):
     s = Settings(_env_file=None)
     assert s.keyterms() == ["Tele MANAS", "Thrissur"]
     assert s.sarvam_num_speakers == 2
+
+
+def test_blank_env_values_fall_back_to_defaults(monkeypatch):
+    monkeypatch.setenv("SARVAM_NUM_SPEAKERS", "")
+    assert Settings(_env_file=None).sarvam_num_speakers == 0
