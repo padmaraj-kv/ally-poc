@@ -65,3 +65,9 @@ def test_has_alert_ignores_dismissed():
 def test_keyword_net_skips_counselor_screening_questions():
     segs = [seg("u1", "ചിലർക്ക് ജീവിക്കണ്ട എന്ന് തോന്നാറുണ്ട്. നിങ്ങൾക്ക് അങ്ങനെ തോന്നിയിട്ടുണ്ടോ?", role="counselor")]
     assert keyword_hits(segs) == []
+
+
+def test_keyword_net_still_checks_counselor_statements():
+    # a client line mislabelled counselor must not escape the net; only questions are skipped
+    segs = [seg("u1", "I want to kill myself, I have pills", role="counselor")]
+    assert [s.id for _, _, s in keyword_hits(segs)] == ["u1"]

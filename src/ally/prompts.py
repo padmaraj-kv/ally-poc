@@ -102,7 +102,7 @@ RISK_SYSTEM = (
     "question. Suicidal thoughts in the past month together with access to means (for example pills or "
     "a weapon at home) are high, even if the client did not act and says they are safe now. Read "
     "context: a counselor's screening question is not itself a risk; a clear denial of any ideation "
-    "lowers severity but mention it in the rationale;idioms such as 'thak ke mar gaya' (dead tired) are not "
+    "lowers severity but mention it in the rationale; idioms such as 'thak ke mar gaya' (dead tired) are not "
     "ideation unless the context says otherwise. Each finding quotes the original words verbatim, "
     "explains why in one or two sentences, and cites segment ids that exist. Do not give scores or "
     "diagnoses. Return an empty list when there are no indicators. " + DATA_RULE

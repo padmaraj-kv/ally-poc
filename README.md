@@ -57,7 +57,7 @@ Sample audio, macOS only: `.venv/bin/python scripts/make_fixtures.py` writes `sa
 
 | Variable | Default | Notes |
 |---|---|---|
-| `DEEPGRAM_API_KEY` | | Required for `hi`, `mr` and `en` |
+| `DEEPGRAM_API_KEY` | | Optional; only used when `SPEECH_PROVIDER=deepgram` (handles `hi` and `en`) |
 | `DEEPGRAM_BASE_URL` | `https://api.in.deepgram.com` | India endpoint (Hyderabad) |
 | `SARVAM_API_KEY` / `SARVAM_MODEL` | / `saaras:v4` | Required for the default speech provider |
 | `LLM_BASE_URL` / `LLM_MODEL` | Gemini `gemini-3.8-flash` | Any OpenAI-compatible endpoint works. Groq `openai/gpt-oss-120b` only fits calls up to about 20 min on its free tier (8K tokens per minute) |
@@ -75,10 +75,9 @@ Sample audio, macOS only: `.venv/bin/python scripts/make_fixtures.py` writes `sa
 - **Deepgram over REST, not its SDK:** the SDK has had four major versions since May 2025. The request is Nova-3 with `diarize_model=latest`; true-stereo files use `multichannel=true` instead, so speaker = channel.
 - **Language detection (`language=auto`):** callers can switch language anywhere in the call, so detection never looks at the opening alone (Whisper's first-30-seconds detection is the known pitfall). It takes a 10-second clip every minute across the whole call, or the whole call when it is 10 minutes or shorter. Gemini lists the languages in each clip, in parallel requests of 15 clips. A 71-minute call takes about 25 s.
 - **One engine per call, chosen by length:** Sarvam for calls up to 10 minutes and Gemini for longer ones. Detection no longer picks the engine. It only labels the call's main language for the prompts and the record, because Sarvam's own label is file-level: on a 22 Oct test file (74 s English, then 62 s Malayalam) it said `en-IN` with probability 1.0, while transcribing the Malayalam part correctly. Sarvam is always sent `language_code=unknown`. Switching engines partway through a call would mix two independent speaker numberings.
-- **Sarvam (optional):** batch STT in `codemix` mode with diarization, for any of the 23 Indian languages. It costs about ₹0.75 per audio minute, and the free tier's ₹100 covers about 130 minutes. Flow: create job → upload to a presigned URL → start → poll every 5 s → download the result JSON. Translation stays on our LLM step, which avoids paying Sarvam's translate rate. On the 1-minute sample it separated the two voices that Deepgram's mono diarization had merged (speech 8.4 s vs 0.7 s).
-- **Hindi-English** uses Nova-3 `language=multi`, which handles code-switching and tags each word's language.
-- **Marathi** defaults to Gemini: Deepgram's `mr` model is Marathi-only and mishears English words.
-- **Malayalam:** Deepgram has no Malayalam model, so `ml` goes to Gemini audio, which returns segments with English text already filled in.
+- **Sarvam (default engine):** batch STT in `codemix` mode with diarization, for any of the 23 Indian languages. It costs about ₹0.75 per audio minute, and the free tier's ₹100 covers about 130 minutes. Flow: create job → upload to a presigned URL → start → poll every 5 s → download the result JSON. Translation stays on our LLM step, which avoids paying Sarvam's translate rate. On the 1-minute sample it separated the two voices that Deepgram's mono diarization had merged (speech 8.4 s vs 0.7 s).
+- **Deepgram (optional engine):** Hindi-English uses Nova-3 `language=multi`, which handles code-switching and tags each word's language. Its `mr` model is Marathi-only and mishears English words, and it has no Malayalam model.
+- **Gemini audio (calls over 10 minutes):** returns segments with English text already filled in.
   - Timestamps are only approximate (MM:SS).
   - Calls are sent in 10-minute parts, in parallel. Gemini numbers speakers afresh in each part, so roles (counselor or client) are decided per part and speakers are renumbered by role across the call.
   - Parts are cut at fixed times, so a sentence can be split at a boundary.
@@ -93,7 +92,7 @@ Sample audio, macOS only: `.venv/bin/python scripts/make_fixtures.py` writes `sa
 - **Risk:**
   - A separate recall-first LLM pass reads both the original-language and English text.
   - Suicidal thoughts in the past month plus access to means are high, even if the client says they are safe now.
-  - A small multilingual keyword net (English, romanised Hindi, Devanagari, Marathi, Malayalam) covers client lines the model didn't flag; counselor lines are skipped because screening questions use the same words.
+  - A small multilingual keyword net (English, romanised Hindi, Devanagari, Marathi, Malayalam) covers client lines the model didn't flag; counselor questions are skipped because screening questions use the same words.
   - No scores. Severity is low, medium or high. A non-dismissed high flag sets `risk_alert`.
   - The keyword list is a starting point and needs clinician review.
 - **Structured output:** `chat.completions.parse` in strict mode. If the provider rejects the schema, it falls back to `json_object` plus Pydantic validation, then one retry that feeds the validation errors back.

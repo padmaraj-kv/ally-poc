@@ -83,12 +83,13 @@ async def _label_roles(llm, segments: list[Segment], chunked: bool) -> list[str]
     )
     # diarization can split one person into several numbers (Sarvam does on a language switch)
     roles = {r.speaker: r.role for r in guess.speakers if r.speaker in speakers}
-    if "counselor" not in roles.values():
+    one_sided = len(set(roles.values())) < 2
+    if one_sided:
         roles = {sp: "counselor" if sp == segments[0].speaker else "client" for sp in speakers}
     for s in segments:
         s.role = roles.get(s.speaker, "unknown")
     warnings = [f"speaker {sp} not labelled{where}; check speakers" for sp in speakers if sp not in roles]
-    if guess.confidence == "low":
+    if one_sided or guess.confidence == "low":
         warnings.append(f"counselor/client roles uncertain{where}; check speakers")
     return warnings
 
@@ -139,11 +140,11 @@ async def run(state, session_id: str) -> None:
             language, w = main_language(heard)
             warnings += w
             store.update(session_id, language=language)
-        route = pick_provider(settings, meta.duration_s)
-        if route not in state.speech:
-            raise PipelineError(f"speech provider '{route}' not configured")
-        provider = state.speech[route]
         with timer("audio"):
+            route = pick_provider(settings, meta.duration_s)
+            if route not in state.speech:
+                raise PipelineError(f"speech provider '{route}' not configured")
+            provider = state.speech[route]
             prepared = await asyncio.to_thread(audio.prepare, src, meta, provider.name)
             files.add(prepared)
         with timer("speech"):

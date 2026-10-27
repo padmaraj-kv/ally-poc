@@ -205,3 +205,10 @@ async def test_roles_prompt_includes_speakers_that_only_appear_late():
     await assign_roles(llm, segs, 0)
     assert "late voice" in llm.user
     assert segs[-1].role == "counselor"
+
+
+async def test_roles_all_counselor_falls_back_with_warning():
+    segs = [_seg("u1", 0, "Hello"), _seg("u2", 1, "I want to die")]
+    warnings = await assign_roles(MapRoles({0: "counselor", 1: "counselor"}), segs, 0)
+    assert [s.role for s in segs] == ["counselor", "client"]
+    assert warnings == ["counselor/client roles uncertain; check speakers"]
