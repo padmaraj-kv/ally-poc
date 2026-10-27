@@ -14,6 +14,12 @@ class Settings(BaseSettings):
     sarvam_api_key: SecretStr = SecretStr("")
     sarvam_base_url: str = "https://api.sarvam.ai"
     sarvam_model: str = "saaras:v4"
+    # 0 = Sarvam decides. Off by default: on the 27 Oct demo call, 2 merged turns and put the
+    # client's Malayalam lines under the counselor (6 ids without it, which the role step handles)
+    sarvam_num_speakers: int = 0
+    # comma-separated words to listen for (saaras:v4, max 50). Off by default: on 27 Oct "Tele MANAS"
+    # was inserted where it was never said, though "Thrissur" was fixed
+    sarvam_keyterms: str = ""
 
     llm_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
     llm_api_key: SecretStr = SecretStr("")
@@ -33,3 +39,6 @@ class Settings(BaseSettings):
     max_upload_mb: int = 200
     export_webhook_url: str = ""
     log_level: str = "INFO"
+
+    def keyterms(self) -> list[str]:
+        return [t.strip() for t in self.sarvam_keyterms.split(",") if t.strip()][:50]

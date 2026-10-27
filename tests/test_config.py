@@ -14,3 +14,13 @@ def test_settings_defaults():
     s = Settings(_env_file=None)
     assert s.deepgram_base_url == "https://api.in.deepgram.com"
     assert (s.speech_provider, s.long_call_speech, s.long_call_minutes) == ("sarvam", "gemini", 10)
+
+
+def test_sarvam_speaker_count_and_keyterms(monkeypatch):
+    defaults = Settings(_env_file=None)
+    assert defaults.sarvam_num_speakers == 0 and defaults.keyterms() == []
+    monkeypatch.setenv("SARVAM_KEYTERMS", "Tele MANAS, Thrissur ,")
+    monkeypatch.setenv("SARVAM_NUM_SPEAKERS", "2")
+    s = Settings(_env_file=None)
+    assert s.keyterms() == ["Tele MANAS", "Thrissur"]
+    assert s.sarvam_num_speakers == 2

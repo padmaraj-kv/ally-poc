@@ -285,3 +285,28 @@ async def test_sarvam_failed_job(tmp_path):
             await SarvamSpeech("k", "https://api.test", "saaras:v4", http, poll_s=0).transcribe(
                 path, meta(False), "ml"
             )
+
+
+async def test_sarvam_sends_speaker_count_and_keyterms(tmp_path):
+    path = tmp_path / "call.sarvam.mp3"
+    path.write_bytes(b"ID3fake")
+    calls = []
+    async with httpx.AsyncClient(transport=sarvam_transport(calls)) as http:
+        sarvam = SarvamSpeech(
+            "k", "https://api.test", "saaras:v4", http, poll_s=0, num_speakers=2, keyterms=["Tele MANAS"]
+        )
+        await sarvam.transcribe(path, meta(False), "ml")
+    create = json.loads(calls[0][2].content)["job_parameters"]
+    assert create["num_speakers"] == 2 and create["keyterms"] == ["Tele MANAS"]
+
+
+async def test_sarvam_omits_unset_speaker_count_and_keyterms(tmp_path):
+    path = tmp_path / "call.sarvam.mp3"
+    path.write_bytes(b"ID3fake")
+    calls = []
+    async with httpx.AsyncClient(transport=sarvam_transport(calls)) as http:
+        await SarvamSpeech("k", "https://api.test", "saaras:v4", http, poll_s=0).transcribe(
+            path, meta(False), "ml"
+        )
+    create = json.loads(calls[0][2].content)["job_parameters"]
+    assert "num_speakers" not in create and "keyterms" not in create

@@ -70,7 +70,14 @@ def _providers(settings: Settings, http: httpx.AsyncClient, llm) -> dict:
     if key := settings.deepgram_api_key.get_secret_value():
         providers["deepgram"] = DeepgramSpeech(key, settings.deepgram_base_url, settings.deepgram_model, http)
     if key := settings.sarvam_api_key.get_secret_value():
-        providers["sarvam"] = SarvamSpeech(key, settings.sarvam_base_url, settings.sarvam_model, http)
+        providers["sarvam"] = SarvamSpeech(
+            key,
+            settings.sarvam_base_url,
+            settings.sarvam_model,
+            http,
+            num_speakers=settings.sarvam_num_speakers,
+            keyterms=settings.keyterms(),
+        )
     if llm is not None:
         providers["gemini"] = GeminiSpeech(llm)  # needs an audio-capable model (Gemini)
     return providers

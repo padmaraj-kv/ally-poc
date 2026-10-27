@@ -60,6 +60,7 @@ Sample audio, macOS only: `.venv/bin/python scripts/make_fixtures.py` writes `sa
 | `DEEPGRAM_API_KEY` | | Optional; only used when `SPEECH_PROVIDER=deepgram` (handles `hi` and `en`) |
 | `DEEPGRAM_BASE_URL` | `https://api.in.deepgram.com` | India endpoint (Hyderabad) |
 | `SARVAM_API_KEY` / `SARVAM_MODEL` | / `saaras:v4` | Required for the default speech provider |
+| `SARVAM_NUM_SPEAKERS` / `SARVAM_KEYTERMS` | `0` / empty | Off by default. On the 27 Oct demo call, `2` merged turns and put client lines under the counselor; keyterms fixed "Thrissur" but inserted "Tele MANAS" where it was never said |
 | `LLM_BASE_URL` / `LLM_MODEL` | Gemini `gemini-3.8-flash` | Any OpenAI-compatible endpoint works. Groq `openai/gpt-oss-120b` only fits calls up to about 20 min on its free tier (8K tokens per minute) |
 | `LLM_API_KEY` | | Required |
 | `LLM_CONCURRENCY` / `TRANSLATE_BATCH_SIZE` | `4` / `120` | Lower these if you hit free-tier rate limits |

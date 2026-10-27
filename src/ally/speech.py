@@ -202,9 +202,19 @@ class SarvamSpeech:
 
     name = "sarvam"
 
-    def __init__(self, api_key: str, base_url: str, model: str, http: httpx.AsyncClient, poll_s: float = 5):
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str,
+        model: str,
+        http: httpx.AsyncClient,
+        poll_s: float = 5,
+        num_speakers: int = 0,
+        keyterms: list[str] | None = None,
+    ):
         self.api_key, self.base_url, self.model = api_key, base_url.rstrip("/"), model
         self.http, self.poll_s = http, poll_s
+        self.num_speakers, self.keyterms = num_speakers, keyterms or []
 
     async def transcribe(self, path: Path, meta: AudioMeta, language: str) -> Transcript:
         return parse_sarvam(await self.result(path, language), language)
@@ -220,6 +230,10 @@ class SarvamSpeech:
             "with_timestamps": True,
             "with_diarization": True,
         }
+        if self.num_speakers:
+            params["num_speakers"] = self.num_speakers
+        if self.keyterms:
+            params["keyterms"] = self.keyterms
         job_id = (await self._call("POST", jobs, {"job_parameters": params}))["job_id"]
         urls = await self._call("POST", f"{jobs}/upload-files", {"job_id": job_id, "files": [path.name]})
         await self._call(
