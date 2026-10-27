@@ -147,10 +147,16 @@ async def test_roles_per_chunk_renumber_speakers():
 
     class PerChunk:
         async def structured(self, system, user, schema, **kw):
-            from ally.pipeline import RoleGuess
+            from ally.pipeline import RoleGuess, SpeakerRole
 
             counselor = 0 if "[u1 " in user else 1  # chunk 1 numbers the counselor as speaker 1
-            return RoleGuess(counselor_speaker=counselor, confidence="high", rationale="")
+            return RoleGuess(
+                speakers=[
+                    SpeakerRole(speaker=s, role="counselor" if s == counselor else "client") for s in (0, 1)
+                ],
+                confidence="high",
+                rationale="",
+            )
 
     assert await assign_roles(PerChunk(), segs, 0) == []
     assert [(s.role, s.speaker) for s in segs] == [
@@ -159,3 +165,43 @@ async def test_roles_per_chunk_renumber_speakers():
         ("counselor", 0),
         ("client", 1),
     ]
+
+
+class MapRoles:
+    """Labels speakers from a fixed map and records what it was shown."""
+
+    def __init__(self, roles):
+        self.roles, self.user = roles, ""
+
+    async def structured(self, system, user, schema, **kw):
+        from ally.pipeline import RoleGuess, SpeakerRole
+
+        self.user = user
+        return RoleGuess(
+            speakers=[SpeakerRole(speaker=s, role=r) for s, r in self.roles.items()],
+            confidence="high",
+            rationale="",
+        )
+
+
+async def test_roles_label_every_speaker_when_diarization_splits_people():
+    # Sarvam renumbered both voices after a language switch: 0/1 in English, 2/3 in Malayalam
+    segs = [_seg("u1", 0, "Hello"), _seg("u2", 1, "Hi"), _seg("u3", 2, "ശരി"), _seg("u4", 3, "ഉണ്ട്")]
+    llm = MapRoles({0: "counselor", 1: "client", 2: "counselor", 3: "client"})
+    assert await assign_roles(llm, segs, 0) == []
+    assert [s.role for s in segs] == ["counselor", "client", "counselor", "client"]
+
+
+async def test_roles_unlabelled_speaker_stays_unknown_with_warning():
+    segs = [_seg("u1", 0, "Hello"), _seg("u2", 1, "Hi"), _seg("u3", 2, "Hmm")]
+    warnings = await assign_roles(MapRoles({0: "counselor", 1: "client"}), segs, 0)
+    assert segs[2].role == "unknown"
+    assert warnings == ["speaker 2 not labelled; check speakers"]
+
+
+async def test_roles_prompt_includes_speakers_that_only_appear_late():
+    segs = [_seg(f"u{i}", i % 2, f"line {i}") for i in range(1, 51)] + [_seg("u51", 5, "late voice")]
+    llm = MapRoles({0: "counselor", 1: "client", 5: "counselor"})
+    await assign_roles(llm, segs, 0)
+    assert "late voice" in llm.user
+    assert segs[-1].role == "counselor"

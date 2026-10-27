@@ -126,6 +126,8 @@ PATTERNS = [(cat, phrase, _pattern(phrase)) for cat, phrases in KEYWORDS.items()
 def keyword_hits(segments: list[Segment]) -> list[tuple[str, str, Segment]]:
     hits, seen = [], set()
     for s in segments:
+        if s.role == "counselor":  # screening questions use the same words
+            continue
         text = f"{s.text}\n{s.text_en or ''}"
         for cat, phrase, pattern in PATTERNS:
             if (s.id, cat) not in seen and pattern.search(text):

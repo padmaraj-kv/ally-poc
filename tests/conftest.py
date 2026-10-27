@@ -119,7 +119,7 @@ class FakeLLM:
     async def structured(self, system, user, schema, *, effort=None, check=None):
         import re
 
-        from ally.pipeline import RoleGuess
+        from ally.pipeline import RoleGuess, SpeakerRole
         from ally.risk import RiskFinding, RiskReport
         from ally.schemas import SessionNote
         from ally.translate import TranslatedItem, TranslationBatch
@@ -129,7 +129,11 @@ class FakeLLM:
             ids = [i.strip() for i in user.rsplit("ids: ", 1)[1].split(",")]
             return TranslationBatch(items=[TranslatedItem(id=i, en=f"EN {i}") for i in ids])
         if schema is RoleGuess:
-            return RoleGuess(counselor_speaker=0, confidence="high", rationale="Greets with helpline name")
+            return RoleGuess(
+                speakers=[SpeakerRole(speaker=0, role="counselor"), SpeakerRole(speaker=1, role="client")],
+                confidence="high",
+                rationale="Greets with helpline name",
+            )
         if schema is SessionNote:
             return make_note(re.findall(r"\[(u\d+) ", user)[:1])
         if schema is RiskReport:

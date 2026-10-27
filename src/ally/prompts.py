@@ -99,8 +99,10 @@ RISK_SYSTEM = (
     "substance_misuse, acute_distress (panic, hopelessness, cannot cope), other. Severity: high = current"
     " intent, plan, means, recent attempt, ongoing harm to a child or imminent danger; medium = passive "
     "ideation, past self-harm, ongoing abuse, harmful substance use; low = vague cues worth a follow-up "
-    "question. Read context: a counselor's screening question is not itself a risk; a clear denial lowers"
-    " severity but mention it in the rationale; idioms such as 'thak ke mar gaya' (dead tired) are not "
+    "question. Suicidal thoughts in the past month together with access to means (for example pills or "
+    "a weapon at home) are high, even if the client did not act and says they are safe now. Read "
+    "context: a counselor's screening question is not itself a risk; a clear denial of any ideation "
+    "lowers severity but mention it in the rationale;idioms such as 'thak ke mar gaya' (dead tired) are not "
     "ideation unless the context says otherwise. Each finding quotes the original words verbatim, "
     "explains why in one or two sentences, and cites segment ids that exist. Do not give scores or "
     "diagnoses. Return an empty list when there are no indicators. " + DATA_RULE
@@ -113,10 +115,12 @@ def risk_user(language: str, segments: list) -> str:
 
 
 ROLES_SYSTEM = (
-    "Identify which diarized speaker is the counselor in this Indian counselling phone call. Counselors "
-    "usually greet with an organisation name, ask open questions, reflect feelings, explain "
-    "confidentiality and suggest next steps; clients describe their own difficulties. Return the "
-    "counselor's speaker number, your confidence and a one-sentence rationale. " + DATA_RULE
+    "Label every diarized speaker number in this Indian counselling phone call as counselor or client. "
+    "Speaker separation can split one person into several numbers, for example when the call switches "
+    "language, so more than one number can be the counselor; judge each number by what it says. "
+    "Counselors usually greet with an organisation name, ask open questions, reflect feelings, explain "
+    "confidentiality and suggest next steps; clients describe their own difficulties. Return one entry "
+    "per speaker number, your confidence and a one-sentence rationale. " + DATA_RULE
 )
 
 

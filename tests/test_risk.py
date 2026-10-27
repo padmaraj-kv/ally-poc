@@ -60,3 +60,8 @@ def test_has_alert_ignores_dismissed():
     assert has_alert([flag])
     flag.status = "dismissed"
     assert not has_alert([flag])
+
+
+def test_keyword_net_skips_counselor_screening_questions():
+    segs = [seg("u1", "ചിലർക്ക് ജീവിക്കണ്ട എന്ന് തോന്നാറുണ്ട്. നിങ്ങൾക്ക് അങ്ങനെ തോന്നിയിട്ടുണ്ടോ?", role="counselor")]
+    assert keyword_hits(segs) == []

@@ -25,8 +25,13 @@ class PipelineError(RuntimeError):
     pass
 
 
+class SpeakerRole(BaseModel):
+    speaker: int
+    role: Literal["counselor", "client"]
+
+
 class RoleGuess(BaseModel):
-    counselor_speaker: int
+    speakers: list[SpeakerRole]
     confidence: Literal["low", "medium", "high"]
     rationale: str
 
@@ -74,12 +79,29 @@ async def _label_roles(llm, segments: list[Segment], chunked: bool) -> list[str]
     if len(speakers) < 2:
         return [f"only one speaker detected{where}; roles left unknown"]
     guess = await llm.structured(
-        prompts.ROLES_SYSTEM, prompts.roles_user(segments[:40]), RoleGuess, effort="low"
+        prompts.ROLES_SYSTEM, prompts.roles_user(role_sample(segments)), RoleGuess, effort="low"
     )
-    counselor = guess.counselor_speaker if guess.counselor_speaker in speakers else segments[0].speaker
+    # diarization can split one person into several numbers (Sarvam does on a language switch)
+    roles = {r.speaker: r.role for r in guess.speakers if r.speaker in speakers}
+    if "counselor" not in roles.values():
+        roles = {sp: "counselor" if sp == segments[0].speaker else "client" for sp in speakers}
     for s in segments:
-        s.role = "counselor" if s.speaker == counselor else "client"
-    return [f"counselor/client roles uncertain{where}; check speakers"] if guess.confidence == "low" else []
+        s.role = roles.get(s.speaker, "unknown")
+    warnings = [f"speaker {sp} not labelled{where}; check speakers" for sp in speakers if sp not in roles]
+    if guess.confidence == "low":
+        warnings.append(f"counselor/client roles uncertain{where}; check speakers")
+    return warnings
+
+
+def role_sample(segments: list[Segment], first: int = 40, per_speaker: int = 8) -> list[Segment]:
+    """The opening plus each speaker's first lines, so voices that only appear late are seen too."""
+    seen: dict[int, int] = {}
+    sample = []
+    for i, s in enumerate(segments):
+        seen[s.speaker] = seen.get(s.speaker, 0) + 1
+        if i < first or seen[s.speaker] <= per_speaker:
+            sample.append(s)
+    return sample
 
 
 class Timer:
